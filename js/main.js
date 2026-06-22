@@ -13,7 +13,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function applyTheme(theme) {
         document.documentElement.setAttribute('data-theme', theme);
         document.querySelector('meta[name="color-scheme"]').content = theme;
-        
+
         if (theme === 'dark') {
             hljsThemeDark.disabled = false;
             hljsThemeLight.disabled = true;
@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Section configurations for metadata calculation
     const sectionConfigs = {
-        'r1-kotlin': { title: 'Kotlin Internals', path: 'sections/r1-kotlin.html', count: 14 },
+        'r1-kotlin': { title: 'Kotlin Fundamentals', path: 'sections/r1-kotlin.html', count: 19 },
         'r1-android': { title: 'Android Fundamentals', path: 'sections/r1-android.html', count: 13 },
         'r1-coroutines': { title: 'Coroutines Deep Dive', path: 'sections/r1-coroutines.html', count: 10 },
         'r1-reactive': { title: 'Reactive Programming', path: 'sections/r1-reactive.html', count: 8 },
@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     async function loadRoute() {
         const hash = window.location.hash.replace('#', '') || 'intro';
-        
+
         // Update active nav links
         navLinks.forEach(link => {
             if (link.getAttribute('data-section') === hash) {
@@ -119,9 +119,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const response = await fetch(config.path);
             if (!response.ok) throw new Error('Failed to load file');
             const html = await response.text();
-            
+
             contentArea.innerHTML = html;
-            
+
             // Format Syntax Highlighting
             document.querySelectorAll('pre code').forEach((block) => {
                 hljs.highlightElement(block);
@@ -129,7 +129,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             // Initialize page interactions & state restoration
             initLoadedPage(hash);
-            
+
             // Scroll to top
             window.scrollTo(0, 0);
 
@@ -189,7 +189,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Handle clicks directly on sidebar section checkboxes (parent-child linkage)
     sectionCheckboxes.forEach(chk => {
         const sectionId = chk.getAttribute('data-section');
-        
+
         // Initial state loading for sidebar
         const isCompleted = localStorage.getItem(`section-complete-${sectionId}`) === 'true';
         chk.checked = isCompleted;
@@ -197,14 +197,14 @@ document.addEventListener('DOMContentLoaded', () => {
         chk.addEventListener('change', (e) => {
             const checked = e.target.checked;
             localStorage.setItem(`section-complete-${sectionId}`, checked);
-            
+
             // If section is R1 or R2 content, toggle all internal topics accordingly
             const config = sectionConfigs[sectionId];
             if (config && sectionId !== 'questions') {
                 for (let i = 1; i <= config.count; i++) {
                     localStorage.setItem(`chk-${sectionId}-t${i}`, checked);
                 }
-                
+
                 // If we are currently viewing this section, reload the state of checkboxes
                 const currentHash = window.location.hash.replace('#', '');
                 if (currentHash === sectionId) {
@@ -227,7 +227,7 @@ document.addEventListener('DOMContentLoaded', () => {
             pageCheckboxes.forEach(chk => {
                 const topicIndex = chk.getAttribute('data-topic');
                 const storageKey = `chk-${sectionId}-t${topicIndex}`;
-                
+
                 // Restore state
                 const isChecked = localStorage.getItem(storageKey) === 'true';
                 chk.checked = isChecked;
@@ -257,7 +257,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
 
         const percentage = Math.round((checkedCount / config.count) * 100);
-        
+
         // Update sidebar checkboxes state
         const sidebarChk = document.getElementById(`chk-${sectionId}`);
         if (sidebarChk) {
@@ -272,7 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Calculate Round 1 completion percentage
         const r1Sections = ['r1-kotlin', 'r1-android', 'r1-coroutines', 'r1-reactive'];
         let r1Total = 0, r1Checked = 0;
-        
+
         r1Sections.forEach(secId => {
             const config = sectionConfigs[secId];
             r1Total += config.count;
@@ -288,7 +288,7 @@ document.addEventListener('DOMContentLoaded', () => {
         // Calculate Round 2 completion percentage
         const r2Sections = ['r2-solution-design', 'r2-live-coding', 'r2-testing', 'r2-clean-code'];
         let r2Total = 0, r2Checked = 0;
-        
+
         r2Sections.forEach(secId => {
             const config = sectionConfigs[secId];
             r2Total += config.count;
@@ -330,7 +330,7 @@ document.addEventListener('DOMContentLoaded', () => {
     // Load search index asynchronously
     async function buildSearchIndex() {
         if (isIndexLoaded) return;
-        
+
         const docs = [];
         const promises = Object.keys(sectionConfigs).map(async (key) => {
             const config = sectionConfigs[key];
@@ -338,22 +338,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 const res = await fetch(config.path);
                 if (!res.ok) return;
                 const htmlText = await res.text();
-                
+
                 // Parse sections for topic elements
                 const parser = new DOMParser();
                 const doc = parser.parseFromString(htmlText, 'text/html');
-                
+
                 // Index topics cards
                 const topicCards = doc.querySelectorAll('.topic-card');
                 if (topicCards.length > 0) {
                     topicCards.forEach((card, idx) => {
                         const titleEl = card.querySelector('h2');
                         const bodyEl = card.querySelector('.topic-body');
-                        
+
                         const title = titleEl ? titleEl.textContent.trim() : config.title;
                         const bodyText = bodyEl ? bodyEl.textContent.trim() : '';
                         const id = titleEl ? titleEl.id || `topic-${idx}` : `topic-${idx}`;
-                        
+
                         docs.push({
                             sectionKey: key,
                             sectionTitle: config.title,
@@ -412,9 +412,9 @@ document.addEventListener('DOMContentLoaded', () => {
         buildSearchIndex().then(() => {
             const cleanQuery = query.toLowerCase().trim();
             const results = searchIndex.filter(doc => {
-                return doc.title.toLowerCase().includes(cleanQuery) || 
-                       doc.content.toLowerCase().includes(cleanQuery) ||
-                       doc.sectionTitle.toLowerCase().includes(cleanQuery);
+                return doc.title.toLowerCase().includes(cleanQuery) ||
+                    doc.content.toLowerCase().includes(cleanQuery) ||
+                    doc.sectionTitle.toLowerCase().includes(cleanQuery);
             });
 
             renderSearchResults(results, cleanQuery);
@@ -434,7 +434,7 @@ document.addEventListener('DOMContentLoaded', () => {
         results.forEach(doc => {
             const item = document.createElement('div');
             item.className = 'search-result-item';
-            
+
             // Create highlighted snippet
             let snippet = doc.content;
             const index = snippet.toLowerCase().indexOf(query);
@@ -584,9 +584,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const matchesRound = activeRound === 'all' || q.round === activeRound;
             const matchesCategory = activeCategory === 'all' || q.category.toLowerCase() === activeCategory.toLowerCase();
             const matchesDiff = activeDifficulty === 'all' || q.difficulty === activeDifficulty;
-            
-            const matchesSearch = !questionsSearchQuery || 
-                q.question.toLowerCase().includes(questionsSearchQuery) || 
+
+            const matchesSearch = !questionsSearchQuery ||
+                q.question.toLowerCase().includes(questionsSearchQuery) ||
                 q.answer.toLowerCase().includes(questionsSearchQuery) ||
                 q.category.toLowerCase().includes(questionsSearchQuery);
 
@@ -603,7 +603,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const card = document.createElement('article');
             card.className = 'question-card';
             card.id = `q-${q.id}`;
-            
+
             const diffClass = q.difficulty === 'senior' ? 'senior' : 'mid';
             const diffLabel = q.difficulty === 'senior' ? 'Senior SDE-2' : 'Mid SDE-2';
 
@@ -641,7 +641,7 @@ document.addEventListener('DOMContentLoaded', () => {
             // Setup card expansion toggle
             const trigger = card.querySelector('.expandable-trigger');
             const content = card.querySelector('.expandable-content');
-            
+
             trigger.addEventListener('click', () => {
                 const isOpen = content.classList.contains('open');
                 if (isOpen) {
