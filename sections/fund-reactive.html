@@ -1,0 +1,261 @@
+<div class="section-content">
+    <h1>Reactive Programming Paradigms</h1>
+    <div class="section-meta">
+        <span>⏱ 10 min read</span>
+        <span>✓ Part 0 Fundamentals</span>
+    </div>
+    
+    <p class="section-intro">
+        Deep dive into reactive stream patterns, cold and hot emissions, stream processing operators, backpressure resolution strategies, and platform lifecycle boundaries.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="cold-hot-streams">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. Flow (Cold Streams) vs StateFlow/SharedFlow (Hot Streams)</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Cold Streams (Flow)</strong>: Independent data streams. The producer block runs on-demand for each subscriber when collection begins. If there are no active collectors, the stream does not execute or emit.</li>
+                <li><strong>Hot Streams (StateFlow & SharedFlow)</strong>: Active broadcast streams. They broadcast emissions immediately to all active collectors, regardless of whether collection has started, sharing a single source.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+
+fun runColdAndHotStreams() = runBlocking {
+    // 1. Cold Flow: executes code block for each collector
+    val coldFlow = flow {
+        println("Cold Flow execution started")
+        emit("Data A")
+    }
+
+    // 2. Hot StateFlow: executes immediately and shares state
+    val hotState = MutableStateFlow("Initial")
+    
+    println("Pre-collection status")
+    
+    // Collecting cold flow
+    coldFlow.collect { println("Collector 1: $it") }
+    coldFlow.collect { println("Collector 2: $it") } // triggers execution again
+
+    // Collecting hot flow
+    launch {
+        hotState.collect { println("Hot Collector: $it") }
+    }
+    
+    hotState.value = "Updated" // updates state, broadcasting to collectors
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How can you convert a cold Flow into a hot Flow?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Use the <code>shareIn</code> or <code>stateIn</code> operators. These operators launch a coroutine in a specified scope to collect the cold flow upstream and broadcast its emissions hot to downstream collectors. For example, <code>stateIn(scope, SharingStarted.WhileSubscribed(5000), initialValue)</code>.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="stateflow-sharedflow">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. StateFlow & SharedFlow</span>
+            <span class="topic-tag">State & Event</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>StateFlow</strong>: A state holder. It requires an initial value, exposes its state via the <code>value</code> property, filters duplicate values, and replays the latest value to new collectors.</li>
+                <li><strong>SharedFlow</strong>: An event broadcaster. It has no initial value, does not filter duplicate values, and does not replay events to new collectors (unless configured with a replay cache &gt; 0).</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+
+class ScreenViewModel {
+    // StateFlow exposes state to UI
+    private val _uiState = MutableStateFlow("Loading")
+    val uiState: StateFlow<String> = _uiState.asStateFlow()
+
+    // SharedFlow broadcasts one-time navigation events
+    private val _eventFlow = MutableSharedFlow<String>()
+    val eventFlow: SharedFlow<String> = _eventFlow.asSharedFlow()
+
+    fun loadData() {
+        _uiState.value = "ContentLoaded" // Updates StateFlow
+    }
+
+    suspend fun triggerNavigation() {
+        _eventFlow.emit("NavigateToHome") // Broadcasts SharedFlow event
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why should you avoid exposing MutableStateFlow directly to views?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Exposing <code>MutableStateFlow</code> violates the encapsulation principle. It allows views to directly modify the state, bypassing the ViewModel's business logic. Always expose it as a read-only <code>StateFlow</code> using <code>asStateFlow()</code>.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="flow-operators">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. Flow Operators (map, filter, flatMapLatest, flowOn)</span>
+            <span class="topic-tag">Operators</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>map & filter</strong>: Perform transformations and conditions on stream elements.</li>
+                <li><strong>flatMapLatest</strong>: When a new item is emitted, it cancels all previous active flows, making it ideal for search queries.</li>
+                <li><strong>flowOn</strong>: Configures the dispatcher context of the **upstream** stream source, leaving downstream collector Dispatchers unaffected.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+
+@OptIn(ExperimentalCoroutinesApi::class)
+fun runOperators() = runBlocking {
+    val searchFlow = flowOf("Hot", "Hote", "Hotel")
+    
+    searchFlow
+        .filter { it.length > 3 } // Upstream operation: runs on IO
+        .map { it.uppercase() }  // Upstream operation: runs on IO
+        .flowOn(Dispatchers.IO) // Configures upstream context to IO
+        .flatMapLatest { query ->
+            // Cancels the previous search if a new query is received
+            flow {
+                emit("Results for $query")
+            }
+        }
+        .collect {
+            println("Collected on main thread: $it")
+        }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What is the difference between flowOn and withContext in a flow?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">In a flow builder, calling <code>withContext</code> directly to change dispatchers violates the flow preservation rule and throws a runtime exception. You must use the <code>flowOn(Dispatcher)</code> operator, which manages context switching safely using channel-based buffering under the hood.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="backpressure-concepts">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. Backpressure Concepts (Buffer vs Conflate vs Suspension)</span>
+            <span class="topic-tag">Flow Control</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Suspension</strong>: Flow's natural backpressure mechanism. Emitters suspend until collectors finish.</li>
+                <li><strong>buffer()</strong>: Buffers emitted items in a channel, allowing the producer to emit ahead of slow collectors.</li>
+                <li><strong>conflate()</strong>: Discards intermediate values, sending only the latest state to a slow collector.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+
+fun testBackpressure() = runBlocking {
+    val fastProducer = flow {
+        for (i in 1..3) {
+            println("Emitting: $i")
+            emit(i)
+            delay(50) // Fast emission
+        }
+    }
+
+    // 1. Conflate Demo: discards intermediate emissions
+    println("--- Conflate ---")
+    fastProducer.conflate().collect { value ->
+        delay(200) // Slow collector
+        println("Collected: $value")
+    }
+
+    // 2. Buffer Demo: buffers emissions
+    println("--- Buffer ---")
+    fastProducer.buffer(2).collect { value ->
+        delay(200) // Slow collector
+        println("Collected: $value")
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How does Flow resolve backpressure by default?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Flow resolves backpressure using coroutine suspension. If a collector is busy, the emitter suspends inside the <code>emit()</code> call, pausing emission until the collector finishes processing the current item and resumes.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="flow-vs-livedata">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. Flow vs LiveData</span>
+            <span class="topic-tag">Comparison</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>LiveData</strong>: An Android platform component. It runs on the main UI thread and stops delivering updates when the observer's lifecycle is inactive, avoiding memory leaks.</li>
+                <li><strong>StateFlow</strong>: A pure Kotlin API. It is lifecycle-agnostic and can run on any thread. To collect values safely in the UI, use <code>repeatOnLifecycle</code> to automatically pause and resume collection.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">// Android UI Layer safely collecting StateFlow vs LiveData
+import androidx.lifecycle.*
+import kotlinx.coroutines.launch
+
+class MyActivity : androidx.activity.ComponentActivity() {
+    private val viewModel = ScreenViewModel()
+
+    fun observeLiveData(liveData: LiveData<String>) {
+        // LiveData: handles lifecycles automatically
+        liveData.observe(this) { data ->
+            println("LiveData received: $data")
+        }
+    }
+
+    fun observeStateFlow() {
+        // StateFlow: needs repeatOnLifecycle helper to prevent resource leaks
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                viewModel.uiState.collect { data ->
+                    println("StateFlow received: $data")
+                }
+            }
+        }
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why is StateFlow preferred over LiveData in Clean Architecture?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>LiveData</code> is an Android platform dependency, which couples the domain and data layers to Android framework classes, breaking clean architecture. <code>StateFlow</code> is a pure Kotlin API, making it portable and testable in pure JVM modules without mocking Android dependencies.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

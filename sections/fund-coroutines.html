@@ -1,0 +1,327 @@
+<div class="section-content">
+    <h1>Coroutines & Concurrency Fundamentals</h1>
+    <div class="section-meta">
+        <span>⏱ 15 min read</span>
+        <span>✓ Part 0 Fundamentals</span>
+    </div>
+    
+    <p class="section-intro">
+        In-depth exploration of Kotlin coroutines, processes vs threads, Continuation Passing Style, state machine compilation, structured concurrency, and async streams.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="concurrency-foundations">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. Processes, Threads & Concurrency vs Parallelism</span>
+            <span class="topic-tag">Foundations</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Processes vs Threads</strong>: A process represents an active instance of an application running in its own private memory heap. A thread is an execution pathway inside a process, sharing memory segments but allocating its own stack.</li>
+                <li><strong>Concurrency vs Parallelism</strong>: Concurrency is the scheduling of multiple execution flows within overlapping time intervals (interleaving execution, e.g. single-core fast switching). Parallelism is the simultaneous execution of multiple tasks at the exact same instant (multiple CPU cores).</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import kotlin.concurrent.thread
+
+fun runClassicThreads() {
+    // Basic Process-bound JVM Threads
+    val thread1 = thread(start = true) {
+        println("Thread 1: Performing background task on: ${Thread.currentThread().name}")
+        Thread.sleep(1000) // Blocks active JVM thread
+    }
+
+    val thread2 = thread(start = true) {
+        println("Thread 2: Performing background task on: ${Thread.currentThread().name}")
+        Thread.sleep(1000)
+    }
+
+    thread1.join()
+    thread2.join()
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why are JVM threads considered expensive compared to Kotlin coroutines?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">JVM threads map directly to OS kernel threads. Each thread requires a dedicated memory stack allocation (typically 1MB). Context switching between threads requires saving register states, switching virtual memory spaces, and modifying scheduler queues in the OS kernel. Coroutines are purely user-land abstraction entities that run inside thread pools, sharing stack space and context switching in user memory, allowing millions of active instances.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="scopes-jobs">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. CoroutineScope, Jobs & Builders (launch vs async)</span>
+            <span class="topic-tag">Builders</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>CoroutineScope</strong>: Establishes a boundary of execution context for new coroutines. Every builder (like <code>launch</code>, <code>async</code>) is an extension of this scope.</li>
+                <li><strong>Job vs SupervisorJob</strong>: A <code>Job</code> acts as a lifecycle handle. Standard Jobs propagate failure upwards, cancelling all other siblings and the parent. A <code>SupervisorJob</code> isolates failures; a child's failure does not impact siblings or parent scopes.</li>
+                <li><strong>launch vs async</strong>: <code>launch</code> returns a fire-and-forget <code>Job</code> with no return value. <code>async</code> returns a <code>Deferred<T></code> which holds a future result retrievable via the suspending call <code>await()</code>.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.*
+
+val customScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+
+fun executeBuilders() {
+    // 1. launch: Fire-and-forget
+    val job: Job = customScope.launch {
+        println("Running launch worker")
+        delay(500)
+    }
+
+    // 2. async: Holds deferred result
+    val deferred: Deferred<Int> = customScope.async {
+        println("Calculating result...")
+        delay(1000)
+        42
+    }
+
+    customScope.launch {
+        val result = deferred.await() // Suspends until async returns value
+        println("Async result received: $result")
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What happens if a coroutine inside a supervisorScope throws an exception?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Unlike a standard <code>coroutineScope</code> where child failures automatically cascade to cancel the entire tree, a <code>supervisorScope</code> overrides child failure propagation. The thrown exception does not cancel other active sibling coroutines or the parent scope, allowing you to catch and handle the exception locally.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="suspend-continuation">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. Suspend Functions, Continuation & State Machine Transformation</span>
+            <span class="topic-tag">Internals</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Suspend Functions</strong>: Suspend execution without blocking the host thread, allowing other tasks to run on that thread.</li>
+                <li><strong>Continuation & CPS</strong>: Under the hood, the compiler rewrites suspending methods using Continuation Passing Style (CPS). The compiler appends an implicit <code>Continuation<T></code> callback argument to the function signature.</li>
+                <li><strong>State Machine Transformation</strong>: The compiled function's body is transformed into an efficient state machine (compiled as a <code>switch</code> statement in bytecode). Each suspension point maps to a state label index. Before suspension, local variables are saved to the continuation instance, and the function exits, returning a <code>COROUTINE_SUSPENDED</code> token. Upon completion, the continuation's <code>resumeWith()</code> is called to re-enter the function and jump back to the saved state label.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.delay
+
+// Standard suspending function
+suspend fun fetchDeals(): List<String> {
+    println("Fetch deals start")
+    delay(500) // Suspension point 1 (State 0 -> State 1)
+    println("Processing deals...")
+    delay(300) // Suspension point 2 (State 1 -> State 2)
+    return listOf("Deal A", "Deal B")
+}
+
+/* 
+  Conceptual JVM Bytecode representation generated by compiler:
+  
+  fun fetchDeals(completion: Continuation<List<String>>): Any? {
+      val stateMachine = completion as? FetchDealsContinuation ?: object : FetchDealsContinuation() {
+          var label = 0
+          var result: Any? = null
+          override fun resumeWith(res: Result<Any?>) {
+              this.result = res
+              this.label++
+              fetchDeals(this)
+          }
+      }
+      
+      switch(stateMachine.label) {
+          case 0:
+              stateMachine.label = 1
+              if (delay(500, stateMachine) == COROUTINE_SUSPENDED) return COROUTINE_SUSPENDED
+          case 1:
+              stateMachine.label = 2
+              if (delay(300, stateMachine) == COROUTINE_SUSPENDED) return COROUTINE_SUSPENDED
+          case 2:
+              return listOf("Deal A", "Deal B")
+      }
+  }
+*/</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Does a suspend function allocate a new thread when called?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">No. Suspend functions do not create or manage threads. They are compiler-rewritten callback mechanisms. When suspending, the execution state is saved to a callback object (Continuation) on the heap, and the thread is released to execute other tasks until the callback invokes its resume method.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="dispatchers-context">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. Dispatchers (Main, IO, Default, Unconfined)</span>
+            <span class="topic-tag">Execution</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Dispatchers.Main</strong>: Bound to the UI main thread loop (via Looper/Handler on Android). All UI updates must execute here.</li>
+                <li><strong>Dispatchers.IO</strong>: Shared elastic pool (up to 64 threads or matching core counts) optimized for blocking input/output operations (network, database).</li>
+                <li><strong>Dispatchers.Default</strong>: Fixed pool of threads matching CPU cores count. Designed for high CPU-intensive work.</li>
+                <li><strong>Dispatchers.Unconfined</strong>: Executes code immediately on the current calling thread context, resuming execution on whatever thread the suspending function completes on.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.*
+
+fun runOnDifferentDispatchers() = runBlocking {
+    launch(Dispatchers.Default) {
+        println("Default CPU thread: ${Thread.currentThread().name}")
+        
+        withContext(Dispatchers.IO) {
+            println("IO Database thread: ${Thread.currentThread().name}")
+        }
+        
+        launch(Dispatchers.Unconfined) {
+            println("Unconfined pre-suspend thread: ${Thread.currentThread().name}")
+            delay(100) // suspends
+            println("Unconfined post-suspend thread: ${Thread.currentThread().name}")
+        }
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">When would you choose to use Dispatchers.Unconfined?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>Dispatchers.Unconfined</code> is rarely used in application code. It is suitable for unit tests or performance-critical utility callbacks where no thread confinement is required, eliminating dispatch queuing latency by executing tasks immediately on the caller's thread context.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="structured-concurrency">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. Structured Concurrency, Cancellation & Exception Handling</span>
+            <span class="topic-tag">Control Flow</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Structured Concurrency</strong>: Ensures that a parent scope does not complete until all of its spawned child coroutines complete. This prevents background resource leaks.</li>
+                <li><strong>Cancellation</strong>: Cooperative in nature. Coroutines periodically inspect their status (checking <code>isActive</code> or throwing <code>CancellationException</code> during suspension calls).</li>
+                <li><strong>Exception Handling</strong>: Uncaught errors propagate up to the root parent, canceling the entire scope. Use <code>CoroutineExceptionHandler</code> to catch unhandled errors at the root scope, or utilize <code>supervisorScope</code> to handle failures locally.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.*
+
+fun runCooperativeScope() = runBlocking {
+    val exceptionHandler = CoroutineExceptionHandler { _, exception ->
+        println("Caught root exception: ${exception.message}")
+    }
+
+    val job = launch(exceptionHandler) {
+        // Child 1: Cooperative cancellation loop
+        val child1 = launch {
+            try {
+                while (isActive) {
+                    println("Worker running...")
+                    delay(100)
+                }
+            } catch (e: CancellationException) {
+                println("Child 1 cancelled clean")
+            }
+        }
+        
+        // Child 2: Throws runtime error
+        val child2 = launch {
+            delay(200)
+            throw RuntimeException("Child 2 failed!")
+        }
+    }
+    
+    job.join() // Waits for execution to finish
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why is catching CancellationException in a catch-all block considered dangerous?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">If you catch and swallow <code>CancellationException</code> (e.g. <code>catch (e: Exception)</code> without rethrowing it), the coroutine stays active, ignoring cancellation commands from its parent scope. This breaks cooperative cancellation, leading to resource leaks. Always rethrow <code>CancellationException</code> or avoid catching it directly.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 6 -->
+    <article class="topic-card">
+        <h2 id="async-streams">
+            <input type="checkbox" class="topic-chk" data-topic="6">
+            <span>6. Flows, StateFlow, SharedFlow & Channels</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Flow</strong>: Cold reactive stream. Emits values only when a collector subscribes.</li>
+                <li><strong>StateFlow</strong>: Hot state-holder. Retains its latest value (requires initial value) and replays it to new collectors.</li>
+                <li><strong>SharedFlow</strong>: Hot event-emitter. Broadcasts one-off events (like alerts or navigation commands) to active subscribers.</li>
+                <li><strong>Channels</strong>: Hot queue-like communication pipeline. Synchronizes data transfer between producer and consumer coroutines.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.channels.Channel
+
+fun runStreamsDemo() = runBlocking {
+    // 1. Cold Flow
+    val coldFlow: Flow<Int> = flow {
+        emit(1); delay(100); emit(2)
+    }
+    
+    // 2. StateFlow (Hot)
+    val stateFlow = MutableStateFlow("InitialState")
+    
+    // 3. SharedFlow (Hot)
+    val sharedFlow = MutableSharedFlow<String>(replay = 0)
+    
+    // 4. Channel (Queue)
+    val channel = Channel<Int>(Channel.BUFFERED)
+    
+    launch {
+        coldFlow.collect { println("Collected: $it") }
+        
+        stateFlow.value = "UpdatedState" // updates StateFlow value
+        
+        sharedFlow.emit("NavigateToHome") // emits SharedFlow event
+        
+        channel.send(100) // sends Channel item
+        println("Channel received: ${channel.receive()}")
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What is the key difference between StateFlow and SharedFlow?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>StateFlow</code> represents state (always has an initial value, holds state, filters duplicate values, and replays the latest state to new collectors). <code>SharedFlow</code> represents events (no initial value, does not filter duplicates, and events are processed once and discarded).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

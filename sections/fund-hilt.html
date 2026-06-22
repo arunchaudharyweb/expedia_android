@@ -1,0 +1,174 @@
+<div class="section-content">
+    <h1>Dependency Injection with Hilt</h1>
+    <div class="section-meta">
+        <span>⏱ 10 min read</span>
+        <span>✓ Part 0 Fundamentals</span>
+    </div>
+    
+    <p class="section-intro">
+        Understand Dependency Injection principles using Hilt, class components, scope constraints, modules design (@Binds vs @Provides), and construction configurations.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="hilt-components-scopes">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. Hilt Components, Scopes & Lifecycles</span>
+            <span class="topic-tag">DI Scopes</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Hilt Components</strong>: Built-in scopes generated at compile-time that align with Android's lifecycles:
+                    <ul>
+                        <li><code>SingletonComponent</code>: Tied to the Application class (retains `@Singleton` instances).</li>
+                        <li><code>ActivityComponent</code>: Tied to the Activity lifecycle (retains `@ActivityScoped` instances).</li>
+                        <li><code>ViewModelComponent</code>: Tied to ViewModel scope (retains `@ViewModelScoped` instances).</li>
+                    </ul>
+                </li>
+                <li><strong>Hilt Scopes</strong>: Limit object creation to specific lifecycles. If no scope is declared, the component creates a new instance on every injection request.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import javax.inject.Inject
+import javax.inject.Singleton
+import dagger.hilt.android.scopes.ActivityScoped
+
+// Singleton Scope: Retained in SingletonComponent throughout app lifecycle
+@Singleton
+class SharedRepository @Inject constructor() {
+    fun getDeals() = listOf("Deal A", "Deal B")
+}
+
+// Activity Scope: Retained in ActivityComponent; new instance created per Activity
+@ActivityScoped
+class ScreenUIManager @Inject constructor() {
+    fun renderDetails() = println("Details rendered on screen")
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What are the performance implications of scoping every dependency in Hilt?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Scoping every dependency increases memory footprint and initialization times. Scoped classes must be stored in the component's internal state map and remain in memory for the duration of that component's lifecycle. Leave dependencies unscoped unless they must share internal state or manage shared resources.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="injection-patterns">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. Constructor vs Field Injection</span>
+            <span class="topic-tag">Injection</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Constructor Injection</strong>: Preferred type. Annotating constructor with `@Inject` makes dependencies explicit and testable.</li>
+                <li><strong>Field Injection</strong>: Injecting public fields annotated with `@Inject` in system-instantiated components (Activities, Fragments).</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import android.os.Bundle
+import androidx.appcompat.app.AppCompatActivity
+import dagger.hilt.android.AndroidEntryPoint
+import javax.inject.Inject
+
+// Constructor Injection: dependencies are explicit in the constructor signature
+class DealsUseCase @Inject constructor(
+    private val repository: SharedRepository
+) {
+    fun getTopDeals() = repository.getDeals().take(1)
+}
+
+// Field Injection: Hilt injects annotated public fields
+@AndroidEntryPoint
+class DealsActivity : AppCompatActivity() {
+
+    @Inject lateinit var useCase: DealsUseCase // Field Injection
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        
+        // useCase is initialized by Hilt after super.onCreate()
+        val deals = useCase.getTopDeals()
+        println("Top Deal: $deals")
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why is Constructor Injection preferred over Field Injection?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Constructor Injection makes dependencies explicit. It allows you to instantiate the class with standard constructor calls in unit tests without starting Hilt, supports immutability (by declaring fields as <code>val</code>), and prevents nullability issues (no <code>lateinit var</code> needed).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="hilt-modules">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. Hilt Modules (@Binds vs @Provides)</span>
+            <span class="topic-tag">Modules</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Hilt Modules</strong>: Annotating with <code>@Module</code> and <code>@InstallIn(...)</code> configures dependencies that Hilt doesn't know how to instantiate.</li>
+                <li><strong>@Provides</strong>: Concrete functions that construct and return third-party objects (like Retrofit clients or Room databases).</li>
+                <li><strong>@Binds</strong>: Abstract functions that map implementation classes to interfaces, reducing compiler boilerplate.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import dagger.Module
+import dagger.Provides
+import dagger.Binds
+import dagger.hilt.InstallIn
+import dagger.hilt.components.SingletonComponent
+import javax.inject.Singleton
+
+// Interface definition
+interface AnalyticsService {
+    fun logEvent(event: String)
+}
+
+class FirebaseAnalytics @Inject constructor() : AnalyticsService {
+    override fun logEvent(event: String) = println("Logged: $event")
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+abstract class AnalyticsModule {
+
+    // 1. @Binds maps implementation class to interface
+    @Binds
+    @Singleton
+    abstract fun bindAnalyticsService(impl: FirebaseAnalytics): AnalyticsService
+}
+
+@Module
+@InstallIn(SingletonComponent::class)
+object NetworkModule {
+
+    // 2. @Provides constructs third-party Retrofit mock client
+    @Provides
+    @Singleton
+    fun provideRetrofitClient(): String {
+        return "RetrofitHttpClientInstance"
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why is @Binds preferred over @Provides?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>@Binds</code> is preferred because it generates no bytecode representation at compile-time. Unlike <code>@Provides</code> (which compiles into a dedicated class and factory instance), <code>@Binds</code> only informs the Dagger compiler of the type mapping, improving compile times and reducing the final APK size.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

@@ -1,0 +1,246 @@
+<div class="section-content">
+    <h1>Android Platform & Framework Core</h1>
+    <div class="section-meta">
+        <span>⏱ 15 min read</span>
+        <span>✓ Part 0 Fundamentals</span>
+    </div>
+    
+    <p class="section-intro">
+        In-depth review of Android platform lifecycles, thread messaging loops, runtime execution performance, system Binder IPC channels, security flags, and background execution models.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="platform-lifecycles">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. Lifecycles (Activity, Fragment, Process, Application & App Startup)</span>
+            <span class="topic-tag">Lifecycles</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Activity & Fragment Lifecycles</strong>: Activity transitions manage UI setups and teardowns. Fragments have a separate view lifecycle; use <code>viewLifecycleOwner</code> for observers to prevent leaks after views are destroyed.</li>
+                <li><strong>Process & Application Lifecycles</strong>: The OS manages process lifecycles dynamically, terminating background applications using out-of-memory scores (OOM ADJ) under memory pressure.</li>
+                <li><strong>App Startup Library</strong>: Initializes components at application startup using a shared ContentProvider, reducing launch overhead.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import android.os.Bundle
+import android.view.View
+import androidx.fragment.app.Fragment
+import androidx.lifecycle.*
+import androidx.startup.Initializer
+
+// Fragment view lifecycle observer safety
+class TravelFragment : Fragment() {
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        
+        // Always observe using viewLifecycleOwner, NOT 'this'
+        viewModel.data.observe(viewLifecycleOwner) { data ->
+            println("Received: $data")
+        }
+    }
+}
+
+// App Startup Initializer
+class AnalyticsInitializer : Initializer&lt;Unit&gt; {
+    override fun create(context: android.content.Context) {
+        println("Initializing SDK at startup")
+    }
+    override fun dependencies(): List&lt;Class&lt;out Initializer&lt;*&gt;&gt;&gt; = emptyList()
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why is using 'this' as the lifecycle owner inside Fragment onViewCreated risky?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Fragments survive view recreation (e.g. when replaced on the backstack). If you pass <code>this</code> (the fragment instance), the observer holds a reference to the old view layout even after <code>onDestroyView()</code> executes, leaking memory. <code>viewLifecycleOwner</code> guarantees cleanup immediately when the view is destroyed.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="loopers-handlers">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. Looper, MessageQueue, and Handler Loop</span>
+            <span class="topic-tag">Threading</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Looper</strong>: Runs an infinite loop on a thread, fetching tasks from a <code>MessageQueue</code>. Sleeps using Linux <code>epoll</code> when empty.</li>
+                <li><strong>MessageQueue</strong>: Priority queue holding scheduled tasks (messages and runnables).</li>
+                <li><strong>Handler</strong>: Posts runnables and schedules messages to execute on a target thread's Looper context.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import android.os.Handler
+import android.os.Looper
+import android.os.Message
+
+class CustomWorkerThread : Thread() {
+    lateinit var handler: Handler
+
+    override fun run() {
+        // Initialize Looper context on background thread
+        Looper.prepare()
+        
+        handler = object : Handler(Looper.myLooper()!!) {
+            override fun handleMessage(msg: Message) {
+                println("Handling background message ID: ${msg.what} on ${Thread.currentThread().name}")
+            }
+        }
+        
+        // Start infinite thread message loop
+        Looper.loop()
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How does Looper sleep without consuming CPU cycles?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The <code>Looper</code> blocks inside the native code of <code>MessageQueue.next()</code>. It performs a Linux <code>epoll_wait</code> system call, placing the thread to sleep until a write event occurs on the event file descriptor, indicating a new message has been posted.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="runtime-gc-leaks">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. ART Runtime, Garbage Collection & Memory Leaks</span>
+            <span class="topic-tag">Memory</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>ART Runtime</strong>: Android Runtime. Uses JIT compilation for quick starts and AOT compilation during device charging cycles to optimize performance.</li>
+                <li><strong>Garbage Collection</strong>: Uses a concurrent copying collector. It copies alive objects to another heap segment while compacting, minimizing thread pauses.</li>
+                <li><strong>Memory Leaks</strong>: Occur when objects (like Activities) are retained by long-lived GC root references (like static fields or active background threads).</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import android.content.Context
+import java.lang.ref.WeakReference
+
+class LeakFreeHelper(context: Context) {
+    // Avoid storing context directly to prevent memory leaks
+    private val contextRef: WeakReference&lt;Context&gt; = WeakReference(context)
+
+    fun doWork() {
+        val context = contextRef.get()
+        if (context != null) {
+            println("Context is still alive, performing work")
+        }
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How do non-static inner classes cause memory leaks in Android?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">In Java and Kotlin (unless declared as <code>inner</code>), non-static nested classes hold an implicit reference to the outer class. If a non-static inner class (such as an anonymous Handler runnable) executes a long-running task in the background, it retains the outer Activity reference, preventing it from being garbage collected and causing a memory leak.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="binder-ipc-pending">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. Binder IPC, PendingIntent Security & Notifications</span>
+            <span class="topic-tag">IPC & Security</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Binder IPC</strong>: Lightweight process-to-process communication. Uses memory-mapped buffers to share data, restricted to a strict 1MB transaction buffer.</li>
+                <li><strong>PendingIntent Security</strong>: Grants external apps authorization to execute intents on your app's behalf. Must declare <code>FLAG_IMMUTABLE</code> (API 31+) to prevent execution exploits.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import android.app.PendingIntent
+import android.content.Context
+import android.content.Intent
+
+fun createSecurePendingIntent(context: Context): PendingIntent {
+    val intent = Intent(context, TargetActivity::class.java).apply {
+        action = "ACTION_VIEW_DETAILS"
+    }
+    
+    // Explicitly declare mutability flag (FLAG_IMMUTABLE) for security
+    return PendingIntent.getActivity(
+        context,
+        1001,
+        intent,
+        PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+    )
+}
+
+class TargetActivity : android.app.Activity()</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why did Android 12 make declaring PendingIntent mutability flags mandatory?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">If a <code>PendingIntent</code> is mutable by default, a malicious application that receives the token can modify the underlying intent (e.g. changing the target class or intent data) to access private components or execute operations with your application's privileges. <code>FLAG_IMMUTABLE</code> blocks modification.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="background-work-systems">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. Background Processing (WorkManager, Services vs WorkManager, Foreground Services)</span>
+            <span class="topic-tag">Background</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>WorkManager Internals</strong>: The standard for persistent, deferrable background work. Saves task state in a local SQLite database and schedules tasks using JobScheduler when constraints are met.</li>
+                <li><strong>Services</strong>: Framework components that execute on the main thread by default. Kept alive relative to the host process priority.</li>
+                <li><strong>Foreground Services</strong>: Tasks that require continuous execution. They must display a persistent notification and declare service types on Android 14+.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import android.content.Context
+import androidx.work.*
+
+class DatabaseSyncWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
+    override suspend fun doWork(): Result {
+        println("Syncing database in background...")
+        return Result.success()
+    }
+}
+
+fun scheduleDatabaseSync(context: Context) {
+    val constraints = Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.UNMETERED)
+        .setRequiresCharging(true)
+        .build()
+
+    val request = OneTimeWorkRequestBuilder&lt;DatabaseSyncWorker&gt;()
+        .setConstraints(constraints)
+        .build()
+
+    WorkManager.getInstance(context).enqueue(request)
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">When should you use WorkManager instead of a Foreground Service?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Use <code>WorkManager</code> for persistent tasks that require execution guarantees (like database syncs or analytics uploads) even if the app or device restarts. Use a <code>Foreground Service</code> for immediate, user-noticeable, non-deferrable tasks (like music playback or active route navigation).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

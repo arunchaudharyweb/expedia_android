@@ -1,0 +1,371 @@
+<div class="section-content">
+    <h1>Kotlin Language Fundamentals</h1>
+    <div class="section-meta">
+        <span>⏱ 15 min read</span>
+        <span>✓ Part 0 Fundamentals</span>
+    </div>
+    
+    <p class="section-intro">
+        Deep dive into Kotlin core syntax, object-oriented paradigms, collection internals, function execution, generics, and delegation, complete with code examples.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="vars-nulls">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. Variables, Data Types & Null Safety</span>
+            <span class="topic-tag">Kotlin</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Variables (val vs var)</strong>: <code>val</code> declares a read-only variable (generating only a getter under the hood); <code>var</code> declares a mutable variable (generating both getter and setter).</li>
+                <li><strong>Data Types</strong>: Under the hood, standard types like <code>Int</code>, <code>Double</code>, and <code>Boolean</code> compile to JVM primitive types (like <code>int</code>, <code>double</code>) to avoid boxing overhead, unless they are nullable or used in generics.</li>
+                <li><strong>Null Safety</strong>: Eliminates <code>NullPointerException</code> at compile-time. Kotlin differentiates between non-nullable types (cannot be null) and nullable types (declared with <code>?</code>). Safely access members using safe-calls (<code>?.</code>), fallback default values using Elvis (<code>?:</code>), or force execution with the non-null assertion operator (<code>!!</code>).</li>
+            </ul>
+            
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">// val vs var & Data Types
+val readOnlyName: String = "Expedia" // Read-only: compile-time constant reference
+var mutableCounter: Int = 100 // Mutable: compiles to primitive 'int'
+
+// Null Safety implementation
+fun printUserLength(username: String?, defaultVal: String = "Guest") {
+    // Safe Call Operator (?.)
+    val length: Int? = username?.length
+    
+    // Elvis Operator (?:)
+    val safeLength: Int = username?.length ?: defaultVal.length
+    
+    println("Length: $safeLength")
+    
+    // Non-null assertion (!!) - Throws NullPointerException if username is null
+    if (username != null) {
+        val forcedLength = username!!.length
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Does val guarantee immutability in Kotlin?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">No. <code>val</code> only guarantees that the reference itself is read-only (you cannot reassign the variable). However, if the object referred to is mutable (such as a <code>MutableList</code>), its internal state can still be modified. For true immutability, use read-only collections and immutable properties.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="oop-classes">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. Class Hierarchies, Objects & Interfaces</span>
+            <span class="topic-tag">OOP</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Classes & Inheritance</strong>: Kotlin classes are closed (final) by default. You must explicitly mark a class and its open methods as <code>open</code> to support inheritance.</li>
+                <li><strong>Data Classes</strong>: Automatically generate boilerplate methods: <code>equals()</code>, <code>hashCode()</code>, <code>toString()</code>, <code>copy()</code>, and <code>componentN()</code> for destructuring.</li>
+                <li><strong>Sealed Classes</strong>: Define restricted class hierarchies. Unlike standard classes, all subclasses of a sealed class must be declared in the same file/package, ensuring exhaustive <code>when</code> expressions.</li>
+                <li><strong>Objects & Companions</strong>: Declaring <code>object</code> creates a thread-safe Singleton instance dynamically. <code>companion object</code> defines static-like scopes within classes.</li>
+                <li><strong>Interfaces</strong>: Can contain abstract declarations as well as concrete default method implementations (unlike Java 7 and below).</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">// Open class for inheritance & Interfaces
+interface Loggable {
+    fun logInfo() = println("Logging interface default impl")
+}
+
+open class Vehicle(val wheels: Int) : Loggable
+
+class Car(wheels: Int, val model: String) : Vehicle(wheels) {
+    override fun logInfo() = println("Car model: $model, wheels: $wheels")
+}
+
+// Data Class
+data class HotelRoom(val id: String, val price: Double)
+
+// Sealed Class
+sealed class NetworkResult {
+    data class Success(val data: String) : NetworkResult()
+    data class Failure(val error: Throwable) : NetworkResult()
+    object Loading : NetworkResult()
+}
+
+// Singleton and Companion Objects
+object DatabaseManager {
+    fun connect() = println("Connected to Database")
+}
+
+class ApiService {
+    companion object {
+        const val BASE_URL = "https://api.expedia.com"
+        fun create(): ApiService = ApiService()
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why are sealed classes preferred over enums for representing state?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Enums are limited because every enum constant is restricted to the same constructor parameters and must be a singleton instance. Subclasses of a sealed class can have their own custom constructor parameters, hold distinct state data (e.g. one holds a loading boolean, another holds a payload object), and exist as multiple separate instances.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="collections-internals">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. Collections & ArrayList/HashMap/LinkedHashMap Internals</span>
+            <span class="topic-tag">Collections</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>ArrayList Internals</strong>: Backed by a standard dynamic JVM array. When elements are added and capacity is exceeded, ArrayList creates a new array 1.5x larger and copies the old array items over.</li>
+                <li><strong>HashMap Internals</strong>: Utilizes an array of nodes (buckets). Maps keys to indices using <code>hashCode()</code> and resolving index conflicts via linked lists. If conflicts in a single bucket grow beyond 8 nodes and total size is &gt;= 64, the list converts into a balanced Red-Black tree (reducing worst-case search complexity from O(N) to O(log N)).</li>
+                <li><strong>LinkedHashMap</strong>: Maintains a doubly-linked list running through all of its nodes. This maintains a predictable iteration order matching insertion or access order.</li>
+                <li><strong>Mutable vs Immutable Collections</strong>: Kotlin divides interfaces into read-only (<code>List</code>) and mutable (<code>MutableList</code>). However, at runtime on the JVM, both compile to standard Java collections (e.g. <code>java.util.ArrayList</code>) which are fully mutable. Kotlin only enforces read-only access at compile-time.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">// Mutable vs Immutable references
+val readOnlyList: List<String> = listOf("Delta", "United") // Read-only interface
+val mutableList: MutableList<String> = mutableListOf("Delta", "United") // Mutable interface
+
+// Modifying under the hood
+fun modifyCollections() {
+    mutableList.add("AirAsia") // Okay
+    
+    // Casting to access mutability (Java interoperability gap)
+    if (readOnlyList is java.util.ArrayList) {
+        (readOnlyList as java.util.ArrayList<String>).add("Crashed!") // Compiles and modifies!
+    }
+}
+
+// HashMap & LinkedHashMap
+val hashStore = HashMap&lt;String, Int&gt;() // Unordered entries
+val insertionOrderedStore = LinkedHashMap&lt;String, Int&gt;() // Preserves insertion order</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What happens when two keys hash to the same bucket in a HashMap?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">It creates a collision. HashMap stores collision entries in the same array slot as a singly-linked list of nodes. During search, it walks the list checking <code>equals()</code>. If the list size exceeds 8 (and total HashMap size is at least 64), the linked list is treeified into a balanced Red-Black Tree, optimizing lookup to O(log N).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="func-lambdas">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. Functions, Lambdas & Inline/Crossinline/Noinline/Reified Types</span>
+            <span class="topic-tag">Functional</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Extension Functions</strong>: Declared outside class definitions. They are resolved statically at compile-time as static utility calls, receiving the receiver class object as the first argument.</li>
+                <li><strong>Higher-Order Functions & Lambdas</strong>: Functions that accept other functions as parameters or return them. Lambdas allocate an instance of the <code>FunctionN</code> interface on the JVM heap, creating memory pressure if called inside loops.</li>
+                <li><strong>Inline Functions</strong>: Tells the compiler to copy the function body and lambda code directly into the calling site, bypassing method invocation and class allocation overhead.</li>
+                <li><strong>Noinline / Crossinline</strong>: Use <code>noinline</code> on parameter lambdas to keep them as objects (e.g. to store them in variables). Use <code>crossinline</code> to prevent lambdas from executing non-local returns (exiting the calling scope).</li>
+                <li><strong>Reified Types</strong>: Access generic type parameters at runtime inside inline functions using <code>inline fun <reified T></code>, bypassing Java's type erasure.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">// Extension Function
+fun String.shout(): String = this.uppercase() + "!"
+
+// Inline, Noinline, and Crossinline
+inline fun executeTasks(
+    crossinline onComplete: () -> Unit,
+    noinline storeAction: () -> Unit
+) {
+    println("Beginning task")
+    val runnable = Runnable { 
+        // crossinline allows this call inside nested local scopes/runnables
+        onComplete() 
+    }
+    runnable.run()
+    
+    // noinline allows this lambda to be treated as an object and stored
+    val stored = storeAction 
+    stored()
+}
+
+// Reified Type Parameters
+inline fun &lt;reified T&gt; checkType(value: Any): Boolean {
+    // Reified parameter allows 'is' check directly at runtime
+    return value is T 
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why is reified only available inside inline functions?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Normally, the JVM performs type erasure, deleting generic type parameters (like <code>&lt;T&gt;</code>) during compilation. Because <code>inline</code> functions copy-paste the function body directly to the call site, the compiler knows the exact class type passed at that specific location. It replaces the generic checks directly with concrete class bytecode checks (e.g., <code>instanceof String</code>).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="delegation-generics">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. Class/Property Delegation & Generics (Variance)</span>
+            <span class="topic-tag">Advanced</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Delegation</strong>: Delegates implementation to another object. Class delegation (<code>class Car : Vehicle by electricEngine</code>) maps interface methods dynamically. Property delegation (<code>var name by delegate</code>) intercepts getter and setter accesses.</li>
+                <li><strong>lazy delegate</strong>: Thread-safe modes:
+                    <ul>
+                        <li><code>SYNCHRONIZED</code>: Monitor locks the block to ensure single-thread execution (default).</li>
+                        <li><code>PUBLICATION</code>: Multiple threads can execute simultaneously, but only the first returned value is stored.</li>
+                        <li><code>NONE</code>: No lock check. Fast, but unsafe in multi-threaded environments.</li>
+                    </ul>
+                </li>
+                <li><strong>Generics & Variance</strong>:
+                    <ul>
+                        <li><code>out T</code> (Covariance): Producer context. Safely reads supertype references; blocks write operations (subtypes assignable to supertypes).</li>
+                        <li><code>in T</code> (Contravariance): Consumer context. Safely writes subtype references; blocks read operations (supertypes assignable to subtypes).</li>
+                    </ul>
+                </li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">// Class Delegation
+interface Engine { fun start() }
+class ElectricEngine : Engine { override fun start() = println("Electric Hum") }
+class ElectricCar(engine: Engine) : Engine by engine // Delegates 'start()' to engine
+
+// Property Delegation & Lazy
+val dbConnection: String by lazy(LazyThreadSafetyMode.SYNCHRONIZED) {
+    println("Initializing Heavy DB...")
+    "MySQLConnection"
+}
+
+// Generics Variance
+class Producer&lt;out T&gt;(private val value: T) {
+    fun get(): T = value // Allowed: producing T
+    // fun set(item: T) {} // Error: Covariant type T cannot be in 'in' position
+}
+
+class Consumer&lt;in T&gt; {
+    fun consume(item: T) = println("Consumed: $item") // Allowed: consuming T
+    // fun retrieve(): T = TODO() // Error: Contravariant type T cannot be in 'out' position
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Explain why 'out T' cannot be used as an input parameter in class methods.</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">If a class is covariant (<code>out T</code>), it allows assigning subtype instances to supertype variables (e.g. assigning <code>Producer&lt;Dog&gt;</code> to <code>Producer&lt;Animal&gt;</code>). If <code>Producer&lt;Animal&gt;</code> allowed input parameters of type <code>Animal</code>, you could pass a <code>Cat</code> into a class that internally expects a <code>Dog</code>, causing a crash. restircting inputs ensures type safety.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 6 -->
+    <article class="topic-card">
+        <h2 id="syntax-scopes">
+            <input type="checkbox" class="topic-chk" data-topic="6">
+            <span>6. Destructuring & Scope Functions (let, run, apply, also, with)</span>
+            <span class="topic-tag">Syntactic Sugar</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Destructuring</strong>: Unpacks classes into variables. The compiler maps destructuring variables directly to the compiled <code>component1()</code>, <code>component2()</code> methods generated in data classes.</li>
+                <li><strong>Scope Functions Reference Matrix</strong>:
+                    <table class="comparison-table">
+                        <thead>
+                            <tr>
+                                <th>Function</th>
+                                <th>Object Reference</th>
+                                <th>Return Value</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><code>let</code></td>
+                                <td><code>it</code></td>
+                                <td>Lambda result</td>
+                            </tr>
+                            <tr>
+                                <td><code>run</code></td>
+                                <td><code>this</code></td>
+                                <td>Lambda result</td>
+                            </tr>
+                            <tr>
+                                <td><code>with</code></td>
+                                <td><code>this</code></td>
+                                <td>Lambda result</td>
+                            </tr>
+                            <tr>
+                                <td><code>apply</code></td>
+                                <td><code>this</code></td>
+                                <td>Context object</td>
+                            </tr>
+                            <tr>
+                                <td><code>also</code></td>
+                                <td><code>it</code></td>
+                                <td>Context object</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">// Destructuring Example
+data class User(val name: String, val age: Int)
+
+fun testDestructuring() {
+    val (username, userAge) = User("Arun", 28) // unpacks variables
+    println("$username is $userAge years old")
+}
+
+// Scope Functions usages
+class Hotel {
+    var name: String = ""
+    var rating: Int = 0
+}
+
+fun testScopeFunctions() {
+    val hotel = Hotel().apply {
+        this.name = "Expedia Ritz" // 'this' reference: configure parameters
+        rating = 5
+    } // returns configured 'Hotel' object
+
+    val info: String = hotel.run {
+        "Hotel: $name, Rating: $rating" // 'this' reference: computes and returns String
+    }
+
+    hotel.let {
+        println("Hotel name length: ${it.name.length}") // 'it' reference: runs block
+    }
+
+    val loggedHotel = hotel.also {
+        println("Logging hotel configuration: ${it.name}") // 'it' reference: returns original hotel
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">When should you use let vs run?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Use <code>let</code> when performing operations on a nullable object safely (e.g. <code>nullableObj?.let { ... }</code>) and accessing it via the <code>it</code> parameter, preserving outside scopes. Use <code>run</code> when configuring properties of an object and computing a result using its implicit <code>this</code> context.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

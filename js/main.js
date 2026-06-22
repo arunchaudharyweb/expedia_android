@@ -74,7 +74,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Section configurations for metadata calculation
     const sectionConfigs = {
-        'android-fundamentals': { title: 'Android Fundamentals', path: 'sections/android-fundamentals.html', count: 6 },
+        'fund-kotlin': { title: 'Kotlin Fundamentals', path: 'sections/fund-kotlin.html', count: 6 },
+        'fund-coroutines': { title: 'Coroutines', path: 'sections/fund-coroutines.html', count: 6 },
+        'fund-reactive': { title: 'Reactive Programming', path: 'sections/fund-reactive.html', count: 5 },
+        'fund-compose': { title: 'Jetpack Compose', path: 'sections/fund-compose.html', count: 6 },
+        'fund-android': { title: 'Android Platform', path: 'sections/fund-android.html', count: 5 },
+        'fund-hilt': { title: 'Dependency Injection (Hilt)', path: 'sections/fund-hilt.html', count: 3 },
         'r1-kotlin': { title: 'Kotlin Fundamentals', path: 'sections/r1-kotlin.html', count: 12 },
         'r1-coroutines': { title: 'Coroutines & Concurrency', path: 'sections/r1-coroutines.html', count: 10 },
         'r1-reactive': { title: 'Reactive Programming', path: 'sections/r1-reactive.html', count: 4 },
@@ -271,16 +276,37 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function calculateMetrics() {
+        // Calculate Android Fundamentals completion percentage (Part 0)
+        const fundSections = ['fund-kotlin', 'fund-coroutines', 'fund-reactive', 'fund-compose', 'fund-android', 'fund-hilt'];
+        let fundTotal = 0, fundChecked = 0;
+
+        fundSections.forEach(secId => {
+            const config = sectionConfigs[secId];
+            if (config) {
+                fundTotal += config.count;
+                for (let i = 1; i <= config.count; i++) {
+                    if (localStorage.getItem(`chk-${secId}-t${i}`) === 'true') {
+                        fundChecked++;
+                    }
+                }
+            }
+        });
+        const fundPct = Math.round((fundChecked / fundTotal) * 100) || 0;
+        const fundProgressEl = document.getElementById('fund-progress');
+        if (fundProgressEl) fundProgressEl.innerText = `${fundPct}%`;
+
         // Calculate Round 1 completion percentage (Part 1)
-        const r1Sections = ['android-fundamentals', 'r1-kotlin', 'r1-coroutines', 'r1-reactive', 'r1-compose', 'r1-android'];
+        const r1Sections = ['r1-kotlin', 'r1-coroutines', 'r1-reactive', 'r1-compose', 'r1-android'];
         let r1Total = 0, r1Checked = 0;
 
         r1Sections.forEach(secId => {
             const config = sectionConfigs[secId];
-            r1Total += config.count;
-            for (let i = 1; i <= config.count; i++) {
-                if (localStorage.getItem(`chk-${secId}-t${i}`) === 'true') {
-                    r1Checked++;
+            if (config) {
+                r1Total += config.count;
+                for (let i = 1; i <= config.count; i++) {
+                    if (localStorage.getItem(`chk-${secId}-t${i}`) === 'true') {
+                        r1Checked++;
+                    }
                 }
             }
         });
@@ -293,10 +319,12 @@ document.addEventListener('DOMContentLoaded', () => {
 
         r2Sections.forEach(secId => {
             const config = sectionConfigs[secId];
-            r2Total += config.count;
-            for (let i = 1; i <= config.count; i++) {
-                if (localStorage.getItem(`chk-${secId}-t${i}`) === 'true') {
-                    r2Checked++;
+            if (config) {
+                r2Total += config.count;
+                for (let i = 1; i <= config.count; i++) {
+                    if (localStorage.getItem(`chk-${secId}-t${i}`) === 'true') {
+                        r2Checked++;
+                    }
                 }
             }
         });
@@ -304,8 +332,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.getElementById('r2-progress').innerText = `${r2Pct}%`;
 
         // Calculate overall score
-        const totalTopics = r1Total + r2Total;
-        const totalChecked = r1Checked + r2Checked;
+        const totalTopics = fundTotal + r1Total + r2Total;
+        const totalChecked = fundChecked + r1Checked + r2Checked;
         const totalPct = Math.round((totalChecked / totalTopics) * 100) || 0;
 
         document.getElementById('total-progress-bar').style.width = `${totalPct}%`;

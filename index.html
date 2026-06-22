@@ -50,6 +50,70 @@
             </div>
             
             <nav class="sidebar-nav">
+                <!-- Part 0: Android Fundamentals -->
+                <div class="nav-group">
+                    <div class="nav-group-title">
+                        <span>Android Fundamentals</span>
+                        <span class="nav-group-progress" id="fund-progress">0%</span>
+                    </div>
+                    <ul class="nav-list">
+                        <li>
+                            <a href="#fund-kotlin" class="nav-link" data-section="fund-kotlin">
+                                <span class="nav-link-meta">
+                                    <input type="checkbox" id="chk-fund-kotlin" class="section-chk" data-section="fund-kotlin" onclick="event.stopPropagation();">
+                                </span>
+                                <span class="nav-link-title">Kotlin Fundamentals</span>
+                                <span class="nav-link-time">15 min read</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#fund-coroutines" class="nav-link" data-section="fund-coroutines">
+                                <span class="nav-link-meta">
+                                    <input type="checkbox" id="chk-fund-coroutines" class="section-chk" data-section="fund-coroutines" onclick="event.stopPropagation();">
+                                </span>
+                                <span class="nav-link-title">Coroutines</span>
+                                <span class="nav-link-time">15 min read</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#fund-reactive" class="nav-link" data-section="fund-reactive">
+                                <span class="nav-link-meta">
+                                    <input type="checkbox" id="chk-fund-reactive" class="section-chk" data-section="fund-reactive" onclick="event.stopPropagation();">
+                                </span>
+                                <span class="nav-link-title">Reactive Programming</span>
+                                <span class="nav-link-time">10 min read</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#fund-compose" class="nav-link" data-section="fund-compose">
+                                <span class="nav-link-meta">
+                                    <input type="checkbox" id="chk-fund-compose" class="section-chk" data-section="fund-compose" onclick="event.stopPropagation();">
+                                </span>
+                                <span class="nav-link-title">Jetpack Compose</span>
+                                <span class="nav-link-time">15 min read</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#fund-android" class="nav-link" data-section="fund-android">
+                                <span class="nav-link-meta">
+                                    <input type="checkbox" id="chk-fund-android" class="section-chk" data-section="fund-android" onclick="event.stopPropagation();">
+                                </span>
+                                <span class="nav-link-title">Android Platform</span>
+                                <span class="nav-link-time">15 min read</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#fund-hilt" class="nav-link" data-section="fund-hilt">
+                                <span class="nav-link-meta">
+                                    <input type="checkbox" id="chk-fund-hilt" class="section-chk" data-section="fund-hilt" onclick="event.stopPropagation();">
+                                </span>
+                                <span class="nav-link-title">Dependency Injection (Hilt)</span>
+                                <span class="nav-link-time">10 min read</span>
+                            </a>
+                        </li>
+                    </ul>
+                </div>
+
                 <!-- Part 1: Platform Core (R1) -->
                 <div class="nav-group">
                     <div class="nav-group-title">
@@ -57,15 +121,6 @@
                         <span class="nav-group-progress" id="r1-progress">0%</span>
                     </div>
                     <ul class="nav-list">
-                        <li>
-                            <a href="#android-fundamentals" class="nav-link" data-section="android-fundamentals">
-                                <span class="nav-link-meta">
-                                    <input type="checkbox" id="chk-android-fundamentals" class="section-chk" data-section="android-fundamentals" onclick="event.stopPropagation();">
-                                </span>
-                                <span class="nav-link-title">Android Fundamentals</span>
-                                <span class="nav-link-time">25 min read</span>
-                            </a>
-                        </li>
                         <li>
                             <a href="#r1-kotlin" class="nav-link" data-section="r1-kotlin">
                                 <span class="nav-link-meta">
@@ -241,7 +296,7 @@
                                     <li>Coroutines structured concurrency & execution pools</li>
                                     <li>Reactive Stream contracts & StateFlow vs LiveData</li>
                                 </ul>
-                                <a href="#android-fundamentals" class="btn btn-primary start-btn">Start R1 Prep</a>
+                                <a href="#fund-kotlin" class="btn btn-primary start-btn">Start R1 Prep</a>
                             </div>
                             <div class="intro-round-card">
                                 <h3>Round 2: Architecture & Live Coding</h3>

@@ -1,0 +1,289 @@
+<div class="section-content">
+    <h1>Jetpack Compose & UI Architecture</h1>
+    <div class="section-meta">
+        <span>⏱ 15 min read</span>
+        <span>✓ Part 0 Fundamentals</span>
+    </div>
+    
+    <p class="section-intro">
+        Explore Jetpack Compose compilation, state hoisting, lifecycle side effects, runtime snapshot system mechanics, navigation structures, and compiler optimizations.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="composables-compiler">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. Composable Functions, Recomposition & Slot Table</span>
+            <span class="topic-tag">Compiler</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Composable Functions</strong>: Annotated with <code>@Composable</code>. The compiler modifies these functions to receive a <code>Composer</code> instance and write layout metadata into the <strong>Slot Table</strong> database.</li>
+                <li><strong>Slot Table</strong>: A sequential array structure that stores composition states, keys, and values. It acts as the database of the UI hierarchy.</li>
+                <li><strong>Recomposition</strong>: Re-running composable functions when their state dependencies change. Compose skips executing functions whose arguments are unchanged.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import androidx.compose.runtime.*
+import androidx.compose.material3.Text
+
+@Composable
+fun GreetingWidget(name: String) {
+    // Recomposes when 'name' changes
+    println("GreetingWidget Recomposing for: $name")
+    Text(text = "Welcome to $name")
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What role does the Composer play in Composable bytecode?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The Compose compiler injects a <code>Composer</code> parameter into every Composable function signature (e.g. <code>fun Widget($composer: Composer, $key: Int)</code>). During execution, the composer reads and writes nodes, keys, and states to the Slot Table, checking if values are unchanged to bypass rendering.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="state-remember">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. State, remember, rememberSaveable & State Hoisting</span>
+            <span class="topic-tag">State</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>State</strong>: An observable wrapper that registers recomposition scopes on read.</li>
+                <li><strong>remember</strong>: Caches a value inside the Slot Table across recompositions.</li>
+                <li><strong>rememberSaveable</strong>: Automatically persists state inside the Bundle system to survive configuration changes and process death.</li>
+                <li><strong>State Hoisting</strong>: Moving state up to make a composable stateless, promoting reusability and testability.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import androidx.compose.runtime.*
+import androidx.compose.material3.*
+
+@Composable
+fun CounterParent() {
+    // Hoisted State: Parent owns the state
+    var count by rememberSaveable { mutableStateOf(0) }
+    
+    CounterChild(
+        count = count,
+        onIncrement = { count++ }
+    )
+}
+
+@Composable
+fun CounterChild(count: Int, onIncrement: () -> Unit) {
+    // Stateless Composable: simple input and event triggers
+    Button(onClick = onIncrement) {
+        Text("Count: $count")
+    }
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What is the difference between remember and rememberSaveable?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>remember</code> stores values in the Slot Table. These values survive recompositions but are lost during activity recreation (like screen rotation). <code>rememberSaveable</code> serializes values into a Bundle, allowing them to survive configuration changes and background process death.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="side-effects">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. Side Effects (LaunchedEffect, DisposableEffect, produceState, derivedStateOf)</span>
+            <span class="topic-tag">Side Effects</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>LaunchedEffect</strong>: Launches a coroutine scope when entering composition. It cancels and re-launches when a specified key changes.</li>
+                <li><strong>DisposableEffect</strong>: Launches an effect that requires cleanup, executing its <code>onDispose</code> block when the key changes or the composable exits.</li>
+                <li><strong>produceState</strong>: Converts non-Compose state flows (like flows or callbacks) into Compose state properties.</li>
+                <li><strong>derivedStateOf</strong>: Calculates state based on other states, caching results and only updating when the computed output changes, preventing redundant recompositions.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import androidx.compose.runtime.*
+import kotlinx.coroutines.delay
+
+@Composable
+fun UserStatusDisplay(userId: String) {
+    var status by remember { mutableStateOf("Offline") }
+
+    // LaunchedEffect: re-triggers when userId changes
+    LaunchedEffect(userId) {
+        status = "Loading..."
+        delay(1000)
+        status = "Online for $userId"
+    }
+
+    // DisposableEffect: registers a sensor listener and unregisters on dispose
+    DisposableEffect(userId) {
+        println("Registering listener for $userId")
+        onDispose {
+            println("Unregistering listener for $userId")
+        }
+    }
+
+    // produceState: produces a state from an async source
+    val timeState = produceState(initialValue = 0) {
+        while(true) {
+            delay(1000)
+            value++
+        }
+    }
+
+    Text("Status: $status, Uptime: ${timeState.value}s")
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why should you avoid reading mutableState values directly in composition if they change frequently?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Reading a rapidly changing state (like scroll offsets) directly inside composition triggers recomposition on every value change. Use <code>derivedStateOf</code> to filter updates, or pass the value inside lambda parameters in modifiers to bypass composition, routing updates directly to the layout and draw phases.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="snapshot-system">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. The Compose Snapshot System</span>
+            <span class="topic-tag">Internals</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Snapshot System</strong>: The database engine of Compose state. It tracks values at a specific point in time, allowing isolated reads and writes across threads (Multi-Version Concurrency Control). Commit actions schedule recomposition.</li>
+                <li><strong>Snapshot Read/Write</strong>: When state values are read during composition, the compiler registers a read observer to identify which scopes depend on those states, invalidating them when values change.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import androidx.compose.runtime.snapshots.Snapshot
+import androidx.compose.runtime.mutableStateOf
+
+fun testSnapshotSystem() {
+    val state = mutableStateOf("Initial State")
+
+    // Take a snapshot
+    val snapshot = Snapshot.takeSnapshot()
+
+    state.value = "Updated State"
+
+    // Read state within the captured snapshot context
+    snapshot.enter {
+        println("Value inside snapshot: ${state.value}") // Output: "Initial State"
+    }
+
+    println("Value outside snapshot: ${state.value}") // Output: "Updated State"
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How does the Snapshot system support multithreaded state updates?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The snapshot system uses Multi-Version Concurrency Control (MVCC). It allows threads to read and write state properties inside their own isolated snapshots. Changes are only committed globally when the snapshot exits, triggering recomposition observers on the main thread safely.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="navigation-compose">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. Navigation in Compose</span>
+            <span class="topic-tag">Navigation</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Navigation Compose</strong>: Manages UI navigation flows. The <code>NavHost</code> binds a <code>NavController</code> to a navigation graph, swapping composables in the content area based on route strings.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import androidx.compose.runtime.Composable
+import androidx.navigation.compose.*
+
+@Composable
+fun AppNavigation() {
+    val navController = rememberNavController()
+    NavHost(navController = navController, startDestination = "home") {
+        composable("home") {
+            HomeScreen(onNavigateToDetails = { navController.navigate("details/123") })
+        }
+        composable("details/{id}") { backStackEntry ->
+            val id = backStackEntry.arguments?.getString("id")
+            DetailsScreen(id = id)
+        }
+    }
+}
+
+@Composable fun HomeScreen(onNavigateToDetails: () -> Unit) {}
+@Composable fun DetailsScreen(id: String?) {}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What are the pitfalls of passing complex data structures inside Navigation routes?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Passing complex objects (like custom data classes) in routes as serialized JSON strings violates Android's navigation principles. It leads to bloated route URLs and potential crashes if sizes exceed bundle limits. Instead, pass simple unique IDs as arguments and fetch the details object from a shared repository.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 6 -->
+    <article class="topic-card">
+        <h2 id="stability-skippability">
+            <input type="checkbox" class="topic-chk" data-topic="6">
+            <span>6. Performance Optimization, Stability & Skippability</span>
+            <span class="topic-tag">Performance</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Concepts & Explanations</h3>
+            <ul>
+                <li><strong>Stability</strong>: Types where values are unchanging, or whose change notifications are visible to Compose. Compose skips rendering composables if their arguments are Stable and unchanged (Skippability).</li>
+                <li><strong>Skippability</strong>: Compiler optimization. If a composable's arguments are stable and unchanged, Compose skips recomposing it entirely.</li>
+                <li><strong>Unstable parameters</strong>: standard collections (like <code>List</code>) are treated as unstable because their implementations can mutate. Fix by wrapping lists in `@Stable` classes or using kotlinx immutable collections.</li>
+            </ul>
+
+            <h3>Code Example</h3>
+            <pre><code class="language-kotlin">import androidx.compose.runtime.*
+
+// 1. Unstable parameter class (standard collection list)
+@Composable
+fun UnstableListWidget(items: List<String>) {
+    // Recomposes even if items content is unchanged because List is marked unstable
+    Text("Count: ${items.size}")
+}
+
+// 2. Stable parameter class
+@Stable
+data class StableWrapper(val items: List<String>)
+
+@Composable
+fun StableListWidget(wrapper: StableWrapper) {
+    // Skippable: will skip recomposition if wrapper holds the same items
+    Text("Count: ${wrapper.items.size}")
+}</code></pre>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How does the Compose compiler classify class stability?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">A class is classified as stable if: 1. All public properties are immutable (declared with <code>val</code>) and stable. 2. It notifies the runtime of state changes (e.g. using mutableStateOf). If any property is mutable (<code>var</code>) or is an interface (like <code>List</code>), the class is classified as unstable.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>
