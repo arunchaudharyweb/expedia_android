@@ -1,0 +1,466 @@
+<div class="section-content">
+    <h1>Coroutines & Flow Deep Dive</h1>
+    <div class="section-meta">
+        <span>⏱ 18 min read</span>
+        <span>✓ Round 1 Core</span>
+    </div>
+
+    <p class="section-intro">
+        Advanced runtime execution strategies, flow concurrency patterns, stream lifecycle management, and testing frameworks for asynchronous Kotlin coroutines.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="launch-vs-async">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. Launch vs Async Concurrency Builders</span>
+            <span class="topic-tag">Builders</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Coroutines provide two main launch builders:
+            </p>
+            <ul>
+                <li><strong>launch:</strong> Fire-and-forget builder. Returns a <code>Job</code>. Any unhandled exception is immediately propagated to the parent job, causing the parent to fail and cancel all sibling coroutines.</li>
+                <li><strong>async:</strong> Returns a <code>Deferred&lt;T&gt;</code> (a subclass of <code>Job</code>). It encapsulates the result of the computation. Unhandled exceptions are not thrown immediately; instead, they are captured and thrown when <code>await()</code> is called. However, if <code>async</code> is used as a root coroutine or inside structured scopes, child failures still propagate to the parent immediately, regardless of whether <code>await()</code> is invoked.</li>
+            </ul>
+            <pre><code class="language-kotlin">// Exception propagation in launch
+scope.launch {
+    throw RuntimeException("Fails immediately")
+}
+
+// Exception propagation in async
+val deferred = scope.async {
+    throw RuntimeException("Fails parent scope immediately if not supervised")
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain the differences in exception handling and return types between launch and async.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>launch</code> is a fire-and-forget builder returning a <code>Job</code>, which propagates exceptions up the hierarchy immediately. <code>async</code> returns a <code>Deferred&lt;T&gt;</code>, allowing callers to retrieve results via <code>await()</code>. Exceptions are thrown when <code>await()</code> is invoked, but within a structured scope, a failure in <code>async</code> still cancels the parent job immediately.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does wrapping an async call in a try-catch block affect its parent scope if the async coroutine fails?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Wrapping a call to <code>await()</code> in a try-catch block and expecting it to prevent parent cancellation (the failure has already propagated up through the coroutine tree).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="withcontext-vs-async">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. withContext vs Async-Await Parallelism</span>
+            <span class="topic-tag">Execution</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Use <code>withContext</code> to change the dispatcher for a single sequential operation. It suspends the calling coroutine and returns the block result directly, avoiding the allocation overhead of launching an asynchronous job.
+            </p>
+            <p>
+                Use <code>async-await</code> only when executing multiple operations in parallel. If you perform sequential calls using <code>async-await</code>, you introduce unnecessary job allocations and scheduling overhead.
+            </p>
+            <pre><code class="language-kotlin">// CORRECT: Sequential dispatcher change
+val user = withContext(Dispatchers.IO) { api.getUser() }
+
+// CORRECT: Parallel execution
+val avatarDeferred = async { api.getAvatar() }
+val profileDeferred = async { api.getProfile() }
+val data = combineData(avatarDeferred.await(), profileDeferred.await())</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">When should you use withContext instead of async/await?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Use <code>withContext</code> for sequential execution and dispatcher switching. It suspends the current block without spawning a new coroutine job. Use <code>async</code> only when executing multiple concurrent operations in parallel to improve performance.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What are the thread scheduling differences between sequential withContext calls and launching multiple async tasks?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using sequential <code>async-await</code> blocks (e.g. <code>val a = async {}.await()</code> followed by <code>val b = async {}.await()</code>), which adds task allocation overhead without providing any concurrency.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="flow-cold-contract">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. Flow Cold Stream Contract</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                A standard Kotlin <code>Flow</code> is a **cold stream**. It does not allocate memory or execute code until a terminal operator (such as <code>collect()</code>) is applied.
+            </p>
+            <p>
+                <strong>Execution Mechanics:</strong> Every collector executes the flow block from the beginning. If a flow has three active collectors, it runs its emitter sequence three independent times. It maintains no state and does not buffer values unless configured to do so.
+            </p>
+            <pre><code class="language-kotlin">val coldFlow = flow {
+    println("Flow started execution") // Prints on every collection
+    emit(1)
+}
+
+// Nothing prints here
+// Prints "Flow started execution" twice:
+coldFlow.collect()
+coldFlow.collect()</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain what makes a Flow "cold" and how this differs from hot streams.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">A Flow is cold because the producer block runs on-demand for each collector. Hot streams (like <code>StateFlow</code> or <code>SharedFlow</code>) execute independent of collectors, broadcasting values to multiple active listeners from a shared buffer.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does Flow handle backpressure internally without using intermediate buffer buffers?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Performing side effects inside a Flow collector and expecting other collectors to receive those modifications.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="stateflow-vs-sharedflow">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. StateFlow vs SharedFlow Decision Matrix</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Compare the behavior of hot streams:
+            </p>
+            <ul>
+                <li><strong>StateFlow:</strong> Retains a single state value. It requires an initial value, exposes it via <code>value</code>, and deduplicates emissions (ignores updates equal to the current state). Ideal for managing UI state.</li>
+                <li><strong>SharedFlow:</strong> A generic event bus. It does not require an initial value and does not deduplicate emissions. It can buffer and replay events to new subscribers, making it ideal for one-time events (such as navigation or snackbar alerts).</li>
+            </ul>
+            <pre><code class="language-kotlin">// StateFlow requires initial value
+val uiState = MutableStateFlow<UiState>(UiState.Loading)
+
+// SharedFlow configured as an event channel
+val navigationEvents = MutableSharedFlow<Screen>(
+    replay = 0, // Do not replay old navigation events
+    extraBufferCapacity = 1 // Buffer size to prevent blocking emitters
+)</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">When would you choose SharedFlow over StateFlow for Android UI updates?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Use <code>StateFlow</code> for persistent UI state that survives configuration changes. Use <code>SharedFlow</code> for transient events (such as showing a Toast or navigation) that should not be re-emitted if the activity rotates and re-subscribes.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What happens to an emitter on MutableStateFlow if the collector block is slow? Does it block the VM thread?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using <code>StateFlow</code> to emit screen navigation events. This can cause the application to re-navigate if the screen rotates and re-subscribes to the last emitted state.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="sharing-operators">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. shareIn and stateIn Sharing Configuration</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Use <code>shareIn</code> and <code>stateIn</code> to convert cold flows into hot <code>SharedFlow</code> or <code>StateFlow</code> instances.
+            </p>
+            <p>
+                <strong>SharingStarted Policies:</strong>
+            </p>
+            <ul>
+                <li><strong>Eagerly:</strong> Starts the upstream flow immediately and keeps it active even if there are no collectors.</li>
+                <li><strong>Lazily:</strong> Starts the upstream flow when the first collector subscribes and keeps it active indefinitely.</li>
+                <li><strong>WhileSubscribed(5000):</strong> Starts the upstream flow when the first collector subscribes and cancels it if there are no collectors for longer than 5 seconds. This prevents resource leaks during transient configuration changes (such as rotation).</li>
+            </ul>
+            <pre><code class="language-kotlin">val hotStateFlow = coldDbFlow
+    .stateIn(
+        scope = viewModelScope,
+        started = SharingStarted.WhileSubscribed(5000), // Grace period
+        initialValue = emptyList()
+    )</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain the SharingStarted.WhileSubscribed policy and why a 5-second delay is recommended for Android applications.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>WhileSubscribed(5000)</code> cancels the upstream database or network stream 5 seconds after the last collector disconnects. The 5-second buffer prevents the stream from being torn down and rebuilt during configuration changes (like rotation, where the UI disconnects and reconnects within milliseconds).</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What are the resource implications of using SharingStarted.Eagerly in ViewModels?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using <code>SharingStarted.Lazily</code> on streams that query sensors or databases, leaking active listeners if the UI is dismissed.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 6 -->
+    <article class="topic-card">
+        <h2 id="flow-operators">
+            <input type="checkbox" class="topic-chk" data-topic="6">
+            <span>6. Advanced Flow Operators (flatMapLatest, combine, zip, conflate, debounce)</span>
+            <span class="topic-tag">Operators</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Advanced flow operators control timing and concurrency:
+            </p>
+            <ul>
+                <li><strong>flatMapLatest:</strong> Cancels the previous in-flight collector flow whenever a new value is emitted. Useful for search autocomplete queries.</li>
+                <li><strong>combine:</strong> Emits a combined value whenever either upstream flow emits a new element.</li>
+                <li><strong>zip:</strong> Combines elements pairwise, emitting a value only when both upstream flows have emitted a corresponding item.</li>
+                <li><strong>conflate:</strong> Skips intermediate values if the collector is slow, processing only the latest value.</li>
+                <li><strong>debounce:</strong> Delays emission, dropping values that are followed by another emission within the specified time window. Useful for search input throttling.</li>
+            </ul>
+            <pre><code class="language-kotlin">// Autocomplete Search Pipeline
+val searchResults = searchQueryFlow
+    .debounce(300) // Wait 300ms after user stops typing
+    .flatMapLatest { query ->
+        flow { emit(repository.searchHotels(query)) } // Cancel previous query if new query is typed
+    }</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How does flatMapLatest combine with debounce to optimize search query performance?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>debounce(300)</code> filters out rapid keystrokes, emitting the query only after the user stops typing for 300ms. <code>flatMapLatest</code> maps this query to a network request, automatically canceling any active, in-flight search requests if the user resumes typing and emits a new query.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What is the difference in exception propagation between combine and zip?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using a standard <code>flatMapMerge</code> for search operations. This processes queries concurrently rather than canceling obsolete in-flight requests, wasting bandwidth.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 7 -->
+    <article class="topic-card">
+        <h2 id="callback-flow">
+            <input type="checkbox" class="topic-chk" data-topic="7">
+            <span>7. callbackFlow for Callback Conversion</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Use <code>callbackFlow</code> to convert callback-based APIs into Kotlin Flows. 
+            </p>
+            <p>
+                <strong>Implementation Rules:</strong> Use <code>trySend()</code> to emit values inside callbacks safely. You must call <code>awaitClose</code> at the end of the block to unregister the callback when the flow collector cancels. Failing to include <code>awaitClose</code> leaks the callback listener.
+            </p>
+            <pre><code class="language-kotlin">fun observeLocation(manager: LocationManager): Flow<Location> = callbackFlow {
+    val callback = object : LocationListener {
+        override fun onLocation(location: Location) {
+            trySend(location) // Emits safely without blocking
+        }
+    }
+    manager.register(callback)
+    
+    // MANDATORY: keeps coroutine active and runs clean-up code on cancellation
+    awaitClose {
+        manager.unregister(callback)
+    }
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Why is awaitClose mandatory in callbackFlow, and what happens if it is omitted?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>awaitClose</code> keeps the coroutine block active while values are being emitted. When the collector cancels, it executes the code block inside <code>awaitClose</code> to unregister listeners. If omitted, the listener is never cleaned up, causing memory leaks, and the channel may close prematurely.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What is the thread-safety guarantee of <code>trySend</code> inside concurrent platform callback threads?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using a standard <code>flow { ... }</code> builder with a callback API, which fails because the flow builder closes immediately without waiting for the callback to trigger.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 8 -->
+    <article class="topic-card">
+        <h2 id="flow-cancellation">
+            <input type="checkbox" class="topic-chk" data-topic="8">
+            <span>8. Flow Cancellation & Exception Propagation</span>
+            <span class="topic-tag">Exception</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Flows respect coroutine cancellation. They are cancellable by default; the collector loop checks for cancellation (using <code>ensureActive()</code>) before emitting each value.
+            </p>
+            <p>
+                <strong>Exceptions:</strong> Downstream exceptions are propagated to the collector. Upstream exceptions can be caught using the <code>catch</code> operator, allowing the stream to emit a fallback value or transition to an error state.
+            </p>
+            <pre><code class="language-kotlin">val safeFlow = repository.getHotels()
+    .catch { error ->
+        emit(emptyList()) // Catch upstream exceptions and emit a fallback value
+    }</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Does the Flow .catch operator intercept exceptions that occur inside the collect {} block?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">No. The <code>.catch</code> operator only intercepts exceptions thrown by *upstream* operators and the producer block. Exceptions thrown *downstream* (inside <code>collect {}</code>) are not caught. To handle downstream exceptions, wrap the collection call in a standard try-catch block, or use <code>onEach { ... }.catch { ... }.launchIn(scope)</code>.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do you implement custom flow-cancellation checks for a loop that emits elements without suspending?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Placing <code>.catch</code> after a <code>collect</code> operator. The catch operator must be declared upstream of the terminal operator to capture errors.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 9 -->
+    <article class="topic-card">
+        <h2 id="scopes-decomposition">
+            <input type="checkbox" class="topic-chk" data-topic="9">
+            <span>9. coroutineScope vs supervisorScope decomposition</span>
+            <span class="topic-tag">Concurrecy</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Use structured scope builders to decompose work into parallel tasks:
+            </p>
+            <ul>
+                <li><strong>coroutineScope:</strong> A failure in any child immediately cancels the scope and all other children. Use this when the tasks are interdependent and a single failure invalidates the entire operation.</li>
+                <li><strong>supervisorScope:</strong> Child failures are handled independently, allowing siblings to continue executing. Use this when tasks are independent, such as loading multiple unrelated cards on a dashboard.</li>
+            </ul>
+            <pre><code class="language-kotlin">// Dashboards: independent operations
+suspend fun loadDashboard() = supervisorScope {
+    val hotels = async { repository.getHotels() } // If this fails...
+    val flights = async { repository.getFlights() } // ...this still runs!
+    
+    Dashboard(hotels.runCatching { await() }.getOrDefault(emptyList()), flights.await())
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain how coroutineScope and supervisorScope differ when handling sibling failures.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>coroutineScope</code> cancels all children if any child fails, behaving like a single transaction. <code>supervisorScope</code> isolates failures, allowing other children to complete even if one fails.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What is the difference between declaring a CoroutineExceptionHandler inside coroutineScope vs supervisorScope?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using a standard <code>coroutineScope</code> to fetch independent UI widgets, causing the entire screen to fail if a single widget network request fails.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 10 -->
+    <article class="topic-card">
+        <h2 id="testing-coroutines">
+            <input type="checkbox" class="topic-chk" data-topic="10">
+            <span>10. Testing Coroutines & Turbine Flow Testing</span>
+            <span class="topic-tag">Testing</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Testing coroutines requires a predictable, controlled environment:
+            </p>
+            <ul>
+                <li><strong>runTest:</strong> Automatically skips delays (virtual time progression) to execute tests instantly.</li>
+                <li><strong>StandardTestDispatcher:</strong> Queues execution, requiring you to call <code>scheduler.advanceUntilIdle()</code> to run pending tasks.</li>
+                <li><strong>Turbine:</strong> A testing library for flows that lets you assert emissions sequentially.</li>
+            </ul>
+            <pre><code class="language-kotlin">@Test
+fun testSearchPipeline() = runTest {
+    val resultsFlow = repository.search("Expedia")
+    
+    // Using Turbine to assert emissions sequentially
+    resultsFlow.test {
+        assertEquals(SearchResult.Loading, awaitItem())
+        val data = awaitItem() as SearchResult.Success
+        assertEquals(2, data.hotels.size)
+        awaitComplete()
+    }
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain how runTest controls execution time, and how Turbine simplifies flow testing.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>runTest</code> executes coroutines using a <code>TestCoroutineScheduler</code>, which skips delays to run tests instantly. Turbine simplifies flow testing by capturing emissions in a channel, allowing you to assert events sequentially using suspending calls like <code>awaitItem()</code>.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">Why does <code>Dispatchers.setMain</code> need to be called in JUnit test setup blocks?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using <code>runBlocking</code> instead of <code>runTest</code> for tests that contain delays, causing the test suite to block and slow down.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

@@ -1,0 +1,602 @@
+[
+  {
+    "id": 1,
+    "round": "R1",
+    "category": "Kotlin",
+    "difficulty": "senior",
+    "question": "How does the Kotlin compiler translate a suspend function into JVM bytecode under the hood?",
+    "answer": "The compiler transforms the function using Continuation-Passing Style (CPS). It adds a Continuation parameter to the end of the method signature and alters the return type to Any? (which can be the computed value or the COROUTINE_SUSPENDED sentinel). An internal state machine is generated to keep track of execution states across suspension points.",
+    "followUp": "How are local variables restored in the state machine when the function resumes?",
+    "commonMistake": "Assuming that suspend functions block threads or compile directly to Java threads."
+  },
+  {
+    "id": 2,
+    "round": "R1",
+    "category": "Kotlin",
+    "difficulty": "mid",
+    "question": "What is the differences between by lazy modes: SYNCHRONIZED, PUBLICATION, and NONE?",
+    "answer": "SYNCHRONIZED uses double-checked locking to guarantee only one thread initializes the value. PUBLICATION allows multiple threads to run the initialization block, but only the first completed result is saved. NONE does not use synchronization, offering the fastest access but leading to race conditions if called concurrently.",
+    "followUp": "Which mode is preferred on the Android main thread, and why?",
+    "commonMistake": "Using the default SYNCHRONIZED mode for UI-bound ViewModels, introducing unnecessary lock overhead."
+  },
+  {
+    "id": 3,
+    "round": "R1",
+    "category": "Kotlin",
+    "difficulty": "senior",
+    "question": "Explain the difference between crossinline and noinline inline parameters.",
+    "answer": "crossinline prevents a lambda from using non-local returns, which is necessary when the lambda is called inside nested contexts like runnables or other lambdas. noinline tells the compiler to treat the lambda as a normal object instead of inlining it, allowing it to be stored in fields or passed to other methods.",
+    "followUp": "Why are non-local returns not allowed in crossinline lambdas?",
+    "commonMistake": "Applying noinline when crossinline is needed to resolve nested lambda compile errors."
+  },
+  {
+    "id": 4,
+    "round": "R1",
+    "category": "Kotlin",
+    "difficulty": "senior",
+    "question": "Why do reified type parameters require the function to be inline?",
+    "answer": "Generic type parameters are erased at runtime on the JVM. By marking a function as inline and its parameter as reified, the compiler replaces type occurrences with the concrete class literal directly at the call site. This replacement is only possible because the function body is copied to the call site during inlining.",
+    "followUp": "Can a reified parameter function be called from Java classes?",
+    "commonMistake": "Thinking reified type parameters preserve generic types at runtime in non-inline functions."
+  },
+  {
+    "id": 5,
+    "round": "R1",
+    "category": "Kotlin",
+    "difficulty": "mid",
+    "question": "How do sealed classes differ from enums in terms of state and instance allocation?",
+    "answer": "Enums represent constant values and are instantiated as singletons. Sealed classes are closed type hierarchies that allow subclasses to have multiple instances, each with its own state and constructor arguments.",
+    "followUp": "How does the compiler verify exhaustiveness of sealed classes in when blocks?",
+    "commonMistake": "Declaring sealed subclasses as class instead of object when they do not hold state, causing unnecessary object allocations."
+  },
+  {
+    "id": 6,
+    "round": "R1",
+    "category": "Kotlin",
+    "difficulty": "senior",
+    "question": "What methods does the compiler generate for a data class, and what are the limitations of its copy() method?",
+    "answer": "The compiler generates equals(), hashCode(), toString(), copy(), and componentN() methods based only on properties defined in the primary constructor. The copy() method performs a shallow copy, meaning nested mutable objects retain their original reference addresses.",
+    "followUp": "What happens if a data class property is declared inside the class body instead of the primary constructor?",
+    "commonMistake": "Assuming dataClass.copy() performs a deep copy of nested mutable objects."
+  },
+  {
+    "id": 7,
+    "round": "R1",
+    "category": "Kotlin",
+    "difficulty": "senior",
+    "question": "Explain declaration-site generics variance using out and in keywords.",
+    "answer": "out T defines covariance (equivalent to ? extends T in Java), restricting the type to read-only positions to preserve subtyping relationships. in T defines contravariance (equivalent to ? super T in Java), restricting the type to write-only positions to reverse subtyping relationships.",
+    "followUp": "What is star projection (*), and how does it restrict reads and writes?",
+    "commonMistake": "Passing invariant collections as parameters when the function only reads data, restricting caller compatibility."
+  },
+  {
+    "id": 8,
+    "round": "R1",
+    "category": "Kotlin",
+    "difficulty": "mid",
+    "question": "Why are extension functions resolved statically rather than polymorphically?",
+    "answer": "Extension functions compile to Java static methods that take the receiver instance as the first argument. Because they are static methods under the hood, the method that executes is determined by the static type of the reference at compile time, not the concrete runtime class.",
+    "followUp": "How do you invoke a Kotlin extension function from Java code?",
+    "commonMistake": "Expecting an extension function to override a member function with the same signature."
+  },
+  {
+    "id": 9,
+    "round": "R1",
+    "category": "Android-Internals",
+    "difficulty": "senior",
+    "question": "Explain what viewLifecycleOwner is in Fragments and why it exists.",
+    "answer": "Fragments have two lifecycles: the fragment instance and the fragment view. The view can be destroyed and recreated (such as when placed on the backstack) while the fragment instance remains alive. viewLifecycleOwner represents the view's lifecycle. Observing LiveData or flows using the fragment instance (this) causes memory leaks and duplicate observers when the view is recreated.",
+    "followUp": "How should you clean up ViewBinding references in onDestroyView() to prevent leaks?",
+    "commonMistake": "Observing UI data streams using the fragment instance (this) as the lifecycle owner."
+  },
+  {
+    "id": 10,
+    "round": "R1",
+    "category": "Android-Internals",
+    "difficulty": "senior",
+    "question": "How does ViewModel survive configuration changes but not system process death?",
+    "answer": "During configuration changes, the activity is destroyed, but the ViewModelStore containing the ViewModels is retained by the host activity using the retainNonConfigurationInstances() hook. During process death, the host process is terminated, destroying all in-memory ViewModels. State must be restored using a SavedStateHandle.",
+    "followUp": "How does SavedStateHandle serialize and deserialize state across process death?",
+    "commonMistake": "Assuming ViewModel state is automatically preserved during system-initiated process death."
+  },
+  {
+    "id": 11,
+    "round": "R1",
+    "category": "Android-Internals",
+    "difficulty": "senior",
+    "question": "Explain the memory reference path that leaks an Activity when using a non-static inner Handler class.",
+    "answer": "The GC reference path is: Main Thread -> Looper -> MessageQueue -> Message -> target (Handler) -> outer class (Activity). Since the message in the queue retains a reference to the handler, and the handler retains an implicit reference to the activity, the activity cannot be garbage collected until all messages are processed.",
+    "followUp": "How does declaring the Handler class as static with a WeakReference fix this leak?",
+    "commonMistake": "Assuming that destroying the Activity automatically clears pending messages in the Looper queue."
+  },
+  {
+    "id": 12,
+    "round": "R1",
+    "category": "Android-Internals",
+    "difficulty": "mid",
+    "question": "What is the difference between a cold start, a warm start, and a hot start?",
+    "answer": "A cold start occurs when the system creates the app process from scratch, initializes the class loader, and instantiates components. A warm start occurs when the process is running but the activity must be recreated from scratch. A hot start brings an existing, running activity to the foreground, requiring only view layout and rendering.",
+    "followUp": "How can you measure startup performance bottlenecks using Perfetto?",
+    "commonMistake": "Optimizing only onCreate() while ignoring Content Provider initialization overhead."
+  },
+  {
+    "id": 13,
+    "round": "R1",
+    "category": "Android-Internals",
+    "difficulty": "senior",
+    "question": "Explain the transaction limits and mechanisms of Binder IPC.",
+    "answer": "Binder is Android's core IPC mechanism. It uses a shared memory buffer mapped between the calling and target processes. This buffer has a 1MB limit per process, shared across all active transactions. Asynchronous one-way calls have a lower buffer limit (typically 64KB) to prevent a single process from exhausting the shared buffer.",
+    "followUp": "What is a Binder Death Recipient, and when should you use it?",
+    "commonMistake": "Passing large bitmaps or lists across Intents or bound services, triggering a TransactionTooLargeException."
+  },
+  {
+    "id": 14,
+    "round": "R1",
+    "category": "Android-Internals",
+    "difficulty": "senior",
+    "question": "How does the Android Runtime (ART) compile and execute dex bytecode?",
+    "answer": "ART uses a hybrid compilation strategy. Upon app startup, code is executed immediately using an interpreter. As the app runs, the JIT compiler compiles hot code paths to native code in memory. When the device is idle and charging, a background daemon compiles these hot code paths to native code using profiles, reducing startup overhead on subsequent runs.",
+    "followUp": "What are the differences between Dalvik and the ART compiler?",
+    "commonMistake": "Believing all application code is compiled to native machine code immediately upon installation."
+  },
+  {
+    "id": 15,
+    "round": "R1",
+    "category": "Android-Internals",
+    "difficulty": "mid",
+    "question": "What are the rules and requirements for running a Foreground Service in Android 14?",
+    "answer": "Starting in Android 14, applications must declare specific foreground service types in their manifest. You must also request type-specific runtime permissions before launching the service, and call startForeground() within 10 seconds of startup.",
+    "followUp": "What happens if a foreground service fails to call startForeground() within the timeout limit?",
+    "commonMistake": "Failing to declare service types or launching services from the background, causing runtime crashes."
+  },
+  {
+    "id": 16,
+    "round": "R1",
+    "category": "Android-Internals",
+    "difficulty": "senior",
+    "question": "Explain how WorkManager schedules tasks and matches execution constraints.",
+    "answer": "WorkManager delegates task scheduling to JobScheduler on API 23+ and falls back to a custom combination of AlarmManager and broadcast receivers on older APIs. It persists task metadata in an internal SQLite database, allowing tasks to resume even if the device restarts.",
+    "followUp": "How do you handle task execution failures and configure retry policies in WorkManager?",
+    "commonMistake": "Using WorkManager to schedule immediate, short-lived tasks that must execute on the current thread."
+  },
+  {
+    "id": 17,
+    "round": "R1",
+    "category": "Coroutines",
+    "difficulty": "senior",
+    "question": "Compare launch and async coroutine builders in terms of exception propagation.",
+    "answer": "launch propagates exceptions up the hierarchy immediately, failing the parent and canceling sibling coroutines. async captures exceptions and throws them when await() is called. However, within a structured scope, a failure in async still cancels the parent job immediately, even if await() is not invoked.",
+    "followUp": "How do you prevent a child exception inside launch from canceling its siblings?",
+    "commonMistake": "Wrapping await() in a try-catch block and expecting it to prevent parent cancellation."
+  },
+  {
+    "id": 18,
+    "round": "R1",
+    "category": "Coroutines",
+    "difficulty": "mid",
+    "question": "When should you use withContext instead of async/await?",
+    "answer": "Use withContext for sequential execution and dispatcher switching. It suspends the current block without spawning a new coroutine job. Use async only when executing multiple concurrent operations in parallel to improve performance.",
+    "followUp": "What are the thread scheduling differences between sequential withContext calls and launching multiple async tasks?",
+    "commonMistake": "Using sequential async-await blocks, which adds task allocation overhead without providing any concurrency."
+  },
+  {
+    "id": 19,
+    "round": "R1",
+    "category": "Coroutines",
+    "difficulty": "senior",
+    "question": "Explain what makes a Flow 'cold' and how this differs from hot streams.",
+    "answer": "A Flow is cold because the producer block runs on-demand for each collector. Hot streams (like StateFlow or SharedFlow) execute independent of collectors, broadcasting values to multiple active listeners from a shared buffer.",
+    "followUp": "How does Flow handle backpressure internally without using intermediate buffer buffers?",
+    "commonMistake": "Performing side effects inside a Flow collector and expecting other collectors to receive those modifications."
+  },
+  {
+    "id": 20,
+    "round": "R1",
+    "category": "Coroutines",
+    "difficulty": "mid",
+    "question": "Compare StateFlow and SharedFlow in terms of state retention and event handling.",
+    "answer": "StateFlow retains a single state value, requires an initial value, and deduplicates emissions. It is ideal for managing UI state. SharedFlow is a generic event bus that does not require an initial value or deduplicate emissions, making it ideal for one-time events.",
+    "followUp": "What happens if a collector block is slow when subscribing to a MutableStateFlow?",
+    "commonMistake": "Using StateFlow to emit screen navigation events, causing duplicate navigation triggers on rotation."
+  },
+  {
+    "id": 21,
+    "round": "R1",
+    "category": "Coroutines",
+    "difficulty": "senior",
+    "question": "Explain the SharingStarted.WhileSubscribed policy and why a 5-second delay is recommended for Android applications.",
+    "answer": "WhileSubscribed(5000) cancels the upstream database or network stream 5 seconds after the last collector disconnects. The 5-second buffer prevents the stream from being torn down and rebuilt during configuration changes (like rotation, where the UI disconnects and reconnects within milliseconds).",
+    "followUp": "What are the resource implications of using SharingStarted.Eagerly in ViewModels?",
+    "commonMistake": "Using SharingStarted.Lazily on streams that query sensors, leaking active listeners if the UI is dismissed."
+  },
+  {
+    "id": 22,
+    "round": "R1",
+    "category": "Coroutines",
+    "difficulty": "senior",
+    "question": "How does flatMapLatest combine with debounce to optimize search query performance?",
+    "answer": "debounce(300) filters out rapid keystrokes, emitting the query only after the user stops typing for 300ms. flatMapLatest maps this query to a network request, automatically canceling any active, in-flight search requests if the user resumes typing and emits a new query.",
+    "followUp": "What is the difference in exception propagation between combine and zip?",
+    "commonMistake": "Using a standard flatMapMerge for search operations. This processes queries concurrently rather than canceling obsolete in-flight requests."
+  },
+  {
+    "id": 23,
+    "round": "R1",
+    "category": "Coroutines",
+    "difficulty": "mid",
+    "question": "Why is awaitClose mandatory in callbackFlow, and what happens if it is omitted?",
+    "answer": "awaitClose keeps the coroutine block active while values are being emitted. When the collector cancels, it executes the code block inside awaitClose to unregister listeners. If omitted, the listener is never cleaned up, causing memory leaks, and the channel may close prematurely.",
+    "followUp": "What is the thread-safety guarantee of trySend inside concurrent callback threads?",
+    "commonMistake": "Using a standard flow { ... } builder with a callback API, which fails because the flow builder closes immediately."
+  },
+  {
+    "id": 24,
+    "round": "R1",
+    "category": "Coroutines",
+    "difficulty": "senior",
+    "question": "Does the Flow .catch operator intercept exceptions that occur inside the collect {} block?",
+    "answer": "No. The catch operator only catches exceptions thrown by upstream operators. Exceptions thrown downstream (inside collect {}) are not caught. To handle downstream exceptions, wrap the collection call in a try-catch block, or use onEach { ... }.catch { ... }.launchIn(scope).",
+    "followUp": "How do you implement custom flow-cancellation checks for a loop that emits elements without suspending?",
+    "commonMistake": "Placing the .catch operator after the collect operator, where it cannot intercept upstream errors."
+  },
+  {
+    "id": 25,
+    "round": "R1",
+    "category": "Coroutines",
+    "difficulty": "senior",
+    "question": "Explain how coroutineScope and supervisorScope differ when handling sibling failures.",
+    "answer": "coroutineScope cancels all children if any child fails, behaving like a single transaction. supervisorScope isolates failures, allowing other children to complete even if one fails.",
+    "followUp": "What is the difference between declaring a CoroutineExceptionHandler inside coroutineScope vs supervisorScope?",
+    "commonMistake": "Using coroutineScope to fetch independent UI widgets, causing the entire screen to fail if a single request fails."
+  },
+  {
+    "id": 26,
+    "round": "R1",
+    "category": "Coroutines",
+    "difficulty": "mid",
+    "question": "How does runTest manage virtual time delays during unit testing?",
+    "answer": "runTest executes coroutines using a TestCoroutineScheduler, which intercepts delays (such as delay(1000)) and advances virtual time instantly, allowing time-dependent tests to complete immediately without blocking the test runner.",
+    "followUp": "Why must you override the Main dispatcher with a TestDispatcher in unit tests?",
+    "commonMistake": "Using runBlocking instead of runTest for tests that contain delays, causing the test suite to block and run slowly."
+  },
+  {
+    "id": 27,
+    "round": "R1",
+    "category": "Reactive",
+    "difficulty": "mid",
+    "question": "Compare LiveData and Kotlin Flow in terms of lifecycle awareness and backpressure.",
+    "answer": "LiveData is lifecycle-aware and updates views on the main thread automatically, but does not support backpressure. Flow is a coroutine-based stream that does not depend on the UI lifecycle by default but supports backpressure handling via suspension, buffer, and conflate.",
+    "followUp": "How do you collect Flows safely in Activities to prevent background emissions?",
+    "commonMistake": "Collecting Flows in an Activity using lifecycleScope.launch instead of repeatOnLifecycle, leaving the stream active in the background."
+  },
+  {
+    "id": 28,
+    "round": "R1",
+    "category": "Reactive",
+    "difficulty": "senior",
+    "question": "What is the threading model difference between RxJava's subscribeOn/observeOn and Flow's flowOn?",
+    "answer": "In RxJava, subscribeOn configures execution for the entire chain, while observeOn overrides threading for downstream operators. In Kotlin Flow, the flowOn operator changes the dispatcher for upstream operators only. The collector runs on the dispatcher of the calling scope.",
+    "followUp": "How do you bridge RxJava Observables to Kotlin Flows in a legacy codebase?",
+    "commonMistake": "Assuming that placing flowOn at the end of a Flow chain configures the collection thread."
+  },
+  {
+    "id": 29,
+    "round": "R1",
+    "category": "Reactive",
+    "difficulty": "mid",
+    "question": "In which scenarios is LiveData still acceptable in modern Android architecture?",
+    "answer": "LiveData is still useful when integration with legacy XML Data Binding is required, or when interoperating with Java code. For simple UI states that require main-thread safety without complex transformations, LiveData remains a viable option.",
+    "followUp": "How does the liveData {} coroutine builder bridge coroutine code with LiveData consumers?",
+    "commonMistake": "Using LiveData in the data or domain layers of an application, coupling business logic to the Android platform."
+  },
+  {
+    "id": 30,
+    "round": "R1",
+    "category": "Reactive",
+    "difficulty": "mid",
+    "question": "Define hot and cold streams and provide an example of each in Android.",
+    "answer": "Cold streams (such as standard flow { ... } or Room query streams) run their producer blocks on-demand for each subscriber. Hot streams (such as StateFlow or SharedFlow) broadcast values to all active collectors from an active execution source, remaining independent of subscriber lifecycles.",
+    "followUp": "How does a hot stream handle resource cleanup when there are no active collectors?",
+    "commonMistake": "Assuming that database queries wrapped in a standard cold Flow run once and share results among multiple collectors."
+  },
+  {
+    "id": 31,
+    "round": "R1",
+    "category": "Reactive",
+    "difficulty": "senior",
+    "question": "How does Flow handle backpressure, and what is the difference between buffer() and conflate()?",
+    "answer": "Flow uses coroutine suspension by default to pause emission until the collector is ready. buffer() queues values in a buffer so the producer can emit without suspending immediately. conflate() drops intermediate values, ensuring the collector only receives the latest value when it is ready.",
+    "followUp": "What happens when a buffer overflows under the BufferOverflow.DROP_OLDEST policy?",
+    "commonMistake": "Using a large buffer size for real-time events, which can cause high memory usage and delay processing of the latest events."
+  },
+  {
+    "id": 32,
+    "round": "R1",
+    "category": "Reactive",
+    "difficulty": "senior",
+    "question": "Why should you avoid using MutableStateFlow to dispatch one-time UI events?",
+    "answer": "MutableStateFlow retains its state. When a new collector subscribes (e.g., during screen rotation), it replays the last emitted state. If that state represents a one-time event (like navigation or a dialog), it will be re-triggered, causing duplicate actions. Use MutableSharedFlow or state-driven events instead.",
+    "followUp": "How do you configure MutableSharedFlow to emulate a single-live-event channel?",
+    "commonMistake": "Setting replay = 1 on a SharedFlow that handles navigation events, causing duplicate navigation triggers on rotation."
+  },
+  {
+    "id": 33,
+    "round": "R1",
+    "category": "Reactive",
+    "difficulty": "senior",
+    "question": "Explain why Channel is discouraged for managing UI events in modern Android architectures.",
+    "answer": "Channels are designed for single-consumer queues. If a screen has multiple observers, events are split between them. Additionally, managing buffer state during lifecycle transitions is difficult, which can lead to lost events or memory leaks. MutableSharedFlow is preferred for broadcasting events.",
+    "followUp": "What is the difference between a rendezvous channel and a conflated channel?",
+    "commonMistake": "Using a Channel to dispatch events to both an Activity and a Fragment, resulting in events being delivered to only one of them."
+  },
+  {
+    "id": 34,
+    "round": "R1",
+    "category": "Reactive",
+    "difficulty": "senior",
+    "question": "Why is the EventWrapper pattern considered an anti-pattern, and how does the State-driven approach resolve it?",
+    "answer": "The EventWrapper pattern introduces mutable state inside immutable state models. The state-driven approach treats the navigation destination as a state property. Once the navigation is executed, the UI triggers an event to clear the destination property in the ViewModel, keeping the state immutable and clean.",
+    "followUp": "How does this state-driven navigation handle complex backstack recovery scenarios?",
+    "commonMistake": "Failing to clear the navigation state property in the ViewModel after executing the navigation, triggering duplicate navigation events on configuration changes."
+  },
+  {
+    "id": 35,
+    "round": "R2",
+    "category": "Solution-Design",
+    "difficulty": "senior",
+    "question": "Design an offline-first search caching architecture using Room and Retrofit.",
+    "answer": "Implement a repository that exposes a Flow from a local Room database as the single source of truth. When the UI subscribes, emit the cached database results immediately. Launch a background task to fetch fresh data via Retrofit, write it to the database on success, and handle network errors by showing a warning indicator in the UI.",
+    "followUp": "How do you handle conflict resolution when background sync conflicts with user modifications?",
+    "commonMistake": "Emitting network results directly to the UI without writing them to the database first, violating the single source of truth principle."
+  },
+  {
+    "id": 36,
+    "round": "R2",
+    "category": "Solution-Design",
+    "difficulty": "senior",
+    "question": "Design a real-time price tracking system for hotel bookings, comparing WebSockets and SSE.",
+    "answer": "Use WebSockets for bi-directional real-time updates (like heartbeat signals) or SSE for uni-directional server-to-client updates. Monitor lifecycle events to disconnect the channel when the app is in the background, and implement an exponential backoff reconnection strategy to handle network drops.",
+    "followUp": "How do you handle stale pricing data in the UI if the connection drops?",
+    "commonMistake": "Keeping the WebSocket connection active when the app is in the background, violating battery optimization guidelines."
+  },
+  {
+    "id": 37,
+    "round": "R2",
+    "category": "Solution-Design",
+    "difficulty": "senior",
+    "question": "Explain the role of RemoteMediator in Paging 3 and how it differs from a PagingSource.",
+    "answer": "PagingSource loads data directly from a single source (either network or database) for the UI. RemoteMediator acts as a boundary callback. When the database runs out of cached items, it fetches the next page from the network and saves it to the database, which then updates the UI.",
+    "followUp": "How do you manage pagination keys in Room to prevent out-of-order page inserts?",
+    "commonMistake": "Using raw offset/limit pagination for dynamic search results. This can cause duplicate items to appear in the list if items are added or reordered during search."
+  },
+  {
+    "id": 38,
+    "round": "R2",
+    "category": "Solution-Design",
+    "difficulty": "senior",
+    "question": "Design a crash-resilient analytics upload pipeline that limits network calls.",
+    "answer": "Write events to a local Room database queue first. Use WorkManager to batch upload events when the device is connected to Wi-Fi or charging, retrying failed uploads using an exponential backoff policy to save battery.",
+    "followUp": "Under what conditions would you drop events instead of retrying them indefinitely?",
+    "commonMistake": "Storing queued events in an in-memory list, causing events to be lost if the app crashes or is killed by the system."
+  },
+  {
+    "id": 39,
+    "round": "R2",
+    "category": "Solution-Design",
+    "difficulty": "mid",
+    "question": "How does local database caching help save battery and network bandwidth on mobile devices?",
+    "answer": "By querying a local database cache instead of the network API on startup, the application reduces cellular radio activation cycles. This saves battery, decreases data consumption, and improves app responsiveness.",
+    "followUp": "What cache invalidation strategy would you use for search results that change frequently?",
+    "commonMistake": "Failing to implement cache invalidation, causing the app to display stale pricing data to users indefinitely."
+  },
+  {
+    "id": 40,
+    "round": "R2",
+    "category": "Solution-Design",
+    "difficulty": "mid",
+    "question": "How do you configure WorkManager constraints to optimize resource usage on Android?",
+    "answer": "Configure constraints like NetworkType.CONNECTED, requiresCharging(true), and requiresDeviceIdle(true). This ensures resource-heavy upload tasks execute only when they will not impact user performance or battery life.",
+    "followUp": "How do you handle immediate analytics events that must be uploaded without delay?",
+    "commonMistake": "Scheduling simple background uploads without constraints, draining battery on low-power devices."
+  },
+  {
+    "id": 41,
+    "round": "R2",
+    "category": "Solution-Design",
+    "difficulty": "senior",
+    "question": "What strategy would you use to sync local data changes back to the server in an offline-first app?",
+    "answer": "Queue local modifications in a pending changes table. When a connection is established, upload modifications sequentially. Resolve conflicts using timestamp checks or by prompting the user to select the version to keep.",
+    "followUp": "How do you handle client-side primary key generation to prevent conflicts with server IDs?",
+    "commonMistake": "Overwriting local changes with stale server data during background synchronization."
+  },
+  {
+    "id": 42,
+    "round": "R2",
+    "category": "Solution-Design",
+    "difficulty": "senior",
+    "question": "Compare HTTP Polling and WebSockets in terms of server load and battery consumption.",
+    "answer": "HTTP Polling involves repeated handshake cycles, which consumes battery and increases server overhead for frequent updates. WebSockets maintain a single persistent connection, reducing handshake overhead but requiring active connection management.",
+    "followUp": "When would you prefer short polling over WebSockets?",
+    "commonMistake": "Using a persistent WebSocket connection for static data that changes infrequently."
+  },
+  {
+    "id": 43,
+    "round": "R2",
+    "category": "Live-Coding",
+    "difficulty": "senior",
+    "question": "Implement a debounced search flow that cancels in-flight requests and handles errors.",
+    "answer": "Expose a query input flow using StateFlow. Chain operators like debounce(300), filter, and flatMapLatest to map queries to API calls. Catch exceptions inside flatMapLatest using a catch block to prevent stream termination.",
+    "followUp": "Why is it important to place the catch operator inside flatMapLatest rather than at the end of the flow chain?",
+    "commonMistake": "Placing the catch operator at the end of the flow chain, which terminates the stream and stops search queries after the first failure."
+  },
+  {
+    "id": 44,
+    "round": "R2",
+    "category": "Live-Coding",
+    "difficulty": "senior",
+    "question": "Write a generic suspend function that retries a task N times with exponential backoff delay.",
+    "answer": "Implement a loop that calls a suspending block. On exception, check if it is retryable, calculate the delay (initialDelay * factor^attempt), call delay(), and repeat. If the final attempt fails, propagate the exception.",
+    "followUp": "How would you introduce jitter to prevent synchronized retry spikes from multiple clients?",
+    "commonMistake": "Retrying indefinitely on fatal errors (such as 401 Unauthorized), causing unnecessary network load."
+  },
+  {
+    "id": 45,
+    "round": "R2",
+    "category": "Live-Coding",
+    "difficulty": "senior",
+    "question": "Implement a thread-safe in-memory cache that expires entries after a configurable TTL.",
+    "answer": "Use ConcurrentHashMap to store CacheEntry objects containing the value and its expiry time. For testing, inject a TimeProvider interface that returns custom timestamps, allowing you to simulate time shifts easily.",
+    "followUp": "How do you clean up expired entries that are never read again from the cache map?",
+    "commonMistake": "Relying on System.currentTimeMillis() inside the cache class directly, making the TTL behavior difficult to test."
+  },
+  {
+    "id": 46,
+    "round": "R2",
+    "category": "Live-Coding",
+    "difficulty": "senior",
+    "question": "Implement an MVI ViewModel that uses StateFlow and a pure state reducer function.",
+    "answer": "Expose a single StateFlow for state and process inputs using a sealed intent class. Inside the intent handler, copy state properties atomically (e.g. state.value = state.value.copy(...)) using a pure reducer pattern.",
+    "followUp": "How do you test state transitions in response to intents independently?",
+    "commonMistake": "Exposing multiple independent MutableStateFlows in ViewModels, which can cause inconsistent UI state."
+  },
+  {
+    "id": 47,
+    "round": "R2",
+    "category": "Live-Coding",
+    "difficulty": "senior",
+    "question": "Implement an offline-first data repository that returns cached data first and fetches fresh network updates.",
+    "answer": "Return a flow that first emits the cached database results. Fetch fresh network data, write it to the database on success, and handle network errors by emitting an error state with the fallback cached data.",
+    "followUp": "Why do we call firstOrNull() on the database flow instead of collecting it indefinitely inside the initial loader block?",
+    "commonMistake": "Emitting network results directly to the UI without writing them to the database first."
+  },
+  {
+    "id": 48,
+    "round": "R2",
+    "category": "Live-Coding",
+    "difficulty": "senior",
+    "question": "Implement a sequential task queue that processes image uploads one at a time.",
+    "answer": "Use an unbounded Channel to queue tasks. Launch a consumer coroutine that reads tasks from the channel sequentially, calls join() on each task job, and removes completed tasks from the active jobs map.",
+    "followUp": "How does job.join() guarantee sequential task execution?",
+    "commonMistake": "Launching tasks concurrently inside a loop without joining jobs, causing concurrent execution."
+  },
+  {
+    "id": 49,
+    "round": "R2",
+    "category": "Testing",
+    "difficulty": "mid",
+    "question": "What should you verify when writing unit tests for a ViewModel?",
+    "answer": "Focus on verifying state transitions and output emissions (such as state flow updates or navigation events). Avoid verification of internal method calls or private fields, as this couples tests to the implementation and makes refactoring difficult.",
+    "followUp": "How do you mock or fake saved state handles during ViewModel unit testing?",
+    "commonMistake": "Asserting calls to internal ViewModel methods instead of verifying changes in the exposed public state flows."
+  },
+  {
+    "id": 50,
+    "round": "R2",
+    "category": "Testing",
+    "difficulty": "mid",
+    "question": "Explain why fakes are often preferred over mocks for repository and service dependencies.",
+    "answer": "Fakes provide a simplified, self-contained implementation (such as an in-memory cache) that behaves consistently across tests. This makes tests more resilient to refactoring, as they do not depend on the exact method invocation patterns required by mocks.",
+    "followUp": "Under what conditions are mocks more appropriate than fakes?",
+    "commonMistake": "Over-mocking simple models and utilities (like data classes or logger wrappers), which adds configuration overhead and slows down test execution."
+  },
+  {
+    "id": 51,
+    "round": "R2",
+    "category": "Testing",
+    "difficulty": "senior",
+    "question": "Explain how runTest manages virtual time delays during testing.",
+    "answer": "runTest uses a TestCoroutineScheduler to intercept delays (such as delay(1000)) and advance virtual time instantly, allowing time-dependent tests to complete immediately without blocking the test runner.",
+    "followUp": "How do you handle tests where a coroutine dispatcher (like Dispatchers.IO) is hardcoded inside a repository?",
+    "commonMistake": "Using a standard runBlocking for coroutines that contain delays. This causes the test suite to block and slow down."
+  },
+  {
+    "id": 52,
+    "round": "R2",
+    "category": "Testing",
+    "difficulty": "mid",
+    "question": "What are the trade-offs of using an in-memory Room database versus a fake for repository testing?",
+    "answer": "An in-memory Room database validates SQL queries, constraint checks, and database schemas, but is slower to initialize and execute. A fake data source is faster to execute but does not validate SQL queries or schema definitions, which can hide database-related bugs.",
+    "followUp": "How do you close the in-memory database instance to prevent memory leaks between test runs?",
+    "commonMistake": "Sharing a single in-memory database instance across multiple tests, causing database locks and test pollution."
+  },
+  {
+    "id": 53,
+    "round": "R2",
+    "category": "Testing",
+    "difficulty": "senior",
+    "question": "What are the key architectural changes needed to make a legacy class testable?",
+    "answer": "Use constructor injection to pass dependencies instead of initializing them inside the class. Avoid accessing static singletons directly, and inject coroutine dispatchers as constructor parameters so they can be overridden with a TestDispatcher during tests.",
+    "followUp": "How do DI frameworks (like Hilt or Dagger) simplify testing with custom test doubles?",
+    "commonMistake": "Hardcoding coroutine dispatchers directly in helper methods, preventing test runners from controlling execution flow using virtual time."
+  },
+  {
+    "id": 54,
+    "round": "R2",
+    "category": "Testing",
+    "difficulty": "senior",
+    "question": "How do you use the Turbine library to assert multiple emissions from a Flow?",
+    "answer": "Use the Flow.test extension method to start collection. Inside the test block, call awaitItem() sequentially to assert emitted values, and use awaitComplete() to verify that the stream has terminated.",
+    "followUp": "How does Turbine handle infinite Flows that do not terminate?",
+    "commonMistake": "Forgetting to cancel the collection of infinite Flows, causing the unit test to hang indefinitely."
+  },
+  {
+    "id": 55,
+    "round": "R2",
+    "category": "Clean-Code",
+    "difficulty": "mid",
+    "question": "Explain how you apply the Interface Segregation and Dependency Inversion principles in Android development.",
+    "answer": "Interface Segregation is applied by splitting large interface classes (such as a generic listener) into smaller, focused interfaces (like HotelSelectionListener). Dependency Inversion is applied by injecting interface abstractions into clients (like ViewModels) instead of instantiating concrete implementations.",
+    "followUp": "How does the Liskov Substitution Principle guide your custom View class implementations?",
+    "commonMistake": "Writing custom view classes that throw unsupported operation exceptions in overridden lifecycle methods, violating Liskov Substitution."
+  },
+  {
+    "id": 56,
+    "round": "R2",
+    "category": "Clean-Code",
+    "difficulty": "mid",
+    "question": "Why are generic suffixes like 'Impl' discouraged, and what naming patterns indicate seniority?",
+    "answer": "Impl suffixes do not describe the class's purpose or technology choice. Suffix implementations with descriptive terms (such as RoomLocalCache or RetrofitHotelApi) to document their design and dependencies clearly.",
+    "followUp": "How do you name callback parameters in asynchronous function declarations to clarify thread safety?",
+    "commonMistake": "Using generic names (like data, list, or manager) that fail to convey the domain concept or purpose of the class."
+  },
+  {
+    "id": 57,
+    "round": "R2",
+    "category": "Clean-Code",
+    "difficulty": "senior",
+    "question": "What criteria do you use to decide whether to extract logic into a separate function?",
+    "answer": "Extract logic if it contains complex nested conditions, is repeated across classes, or can be isolated as a pure function to simplify unit testing. Avoid extracting simple, sequential code paths, as this can fragment the logic and make it harder to read.",
+    "followUp": "How does extracting inline functions in Kotlin affect performance and bytecode size?",
+    "commonMistake": "Extracting small, single-use utility methods that are closely coupled to class variables, which fragments code readability."
+  },
+  {
+    "id": 58,
+    "round": "R2",
+    "category": "Clean-Code",
+    "difficulty": "mid",
+    "question": "Why is functional error handling with a Result class preferred over standard try-catch blocks?",
+    "answer": "Functional error handling makes error states explicit in the function signature, forcing callers to handle errors using utilities like fold. This prevents uncaught runtime crashes and helps separate normal control flow from error handling.",
+    "followUp": "How do you map error subclasses inside a repository layer without losing the original exception stack trace?",
+    "commonMistake": "Swallowing errors by returning null values instead of using an explicit Result type, hiding the failure reason."
+  },
+  {
+    "id": 59,
+    "round": "R2",
+    "category": "Clean-Code",
+    "difficulty": "senior",
+    "question": "How do you wrap callback-based APIs in a suspending function, and how do you handle cancellation?",
+    "answer": "Use suspendCancellableCoroutine to obtain a continuation handle. Call continuation.resume() or continuation.resumeWithException() inside the callbacks. Use the continuation.invokeOnCancellation callback to cancel active network or database requests if the coroutine is cancelled.",
+    "followUp": "What is the difference between suspendCoroutine and suspendCancellableCoroutine?",
+    "commonMistake": "Using the standard suspendCoroutine instead of the cancellable variant for network API calls, leaving request tasks active on cancellation."
+  },
+  {
+    "id": 60,
+    "round": "R2",
+    "category": "Clean-Code",
+    "difficulty": "senior",
+    "question": "Identify three architectural code smells in Android applications and explain how you would resolve them.",
+    "answer": "1. God ViewModel: Delegate network/database calls to repositories. 2. Context leaks: Avoid storing context references in long-lived objects. 3. Presentation-layer business logic: Move validation and transformation algorithms to ViewModels or Domain layers.",
+    "followUp": "How does architectural separation of concerns affect application build times?",
+    "commonMistake": "Writing complex string formatting and currency conversion logic inside Fragments, coupling formatting code to the UI lifecycle and complicating testing."
+  }
+]

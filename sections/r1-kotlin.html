@@ -1,0 +1,909 @@
+<div class="section-content">
+    <h1>Kotlin Internals</h1>
+    <div class="section-meta">
+        <span>⏱ 15 min read</span>
+        <span>✓ Round 1 Core</span>
+    </div>
+    
+    <p class="section-intro">
+        Deep-dive technical handbook on Kotlin compiler internals, JVM bytecode representation, memory models, and execution optimizations targeting Expedia SDE-2 requirements.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="suspend-cps">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. Suspend Function Translation & CPS Transformation</span>
+            <span class="topic-tag">Compiler</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                At compile time, the Kotlin compiler transforms every <code>suspend</code> function using **Continuation-Passing Style (CPS)**. The compiler rewrites the function signature, adding an extra parameter of type <code>Continuation&lt;T&gt;</code> to the end and changing the return type to <code>Any?</code> (representing either the computed value or the marker <code>COROUTINE_SUSPENDED</code>).
+            </p>
+            <p>
+                <strong>Memory & Threading:</strong> Each suspension point generates a state machine class instance to store the local variables and execution index. This allocation creates memory pressure if suspension occurs frequently in tight loops. Threading behavior is governed by the context dispatcher passed in the <code>Continuation</code> context.
+            </p>
+            <pre><code class="language-kotlin">// Kotlin Source
+suspend fun fetchHotelDetails(hotelId: String): Hotel {
+    val token = fetchToken() // Suspension point 1
+    val details = fetchApi(token, hotelId) // Suspension point 2
+    return details
+}
+
+// Conceptually Decompiled JVM Bytecode Signature
+fun fetchHotelDetails(hotelId: String, completion: Continuation<Hotel>): Any? {
+    // Returns Hotel instance or COROUTINE_SUSPENDED
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How does the Kotlin compiler translate a suspend function into Java bytecode?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">It applies CPS (Continuation-Passing Style) transformation. The signature is altered to add a <code>Continuation&lt;T&gt;</code> parameter, and the return type is changed to <code>Any?</code>. The compiler strips the <code>suspend</code> keyword and generates an internal state machine (typically an anonymous subclass of <code>SuspendLambda</code> or <code>ContinuationImpl</code>) to persist local state between suspensions.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What is the significance of the <code>COROUTINE_SUSPENDED</code> sentinel value returned by suspend functions?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Believing suspend functions spawn physical threads. In reality, they are strictly state machines executing on existing threads.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="continuation-internals">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. Continuation Internals</span>
+            <span class="topic-tag">Execution</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                A <code>Continuation</code> acts as a callback interface containing the coroutine context and a callback slot to resume execution. It is defined as:
+            </p>
+            <pre><code class="language-kotlin">interface Continuation&lt;in T&gt; {
+    val context: CoroutineContext
+    fun resumeWith(result: Result&lt;T&gt;)
+}</code></pre>
+            <p>
+                <strong>Memory Implications:</strong> Every suspension point wraps the current continuation into a parent continuation stack, generating garbage. To minimize allocations, the compiler reuses the state machine instance for suspension points within the same function.
+            </p>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What is a Continuation in Kotlin Coroutines, and how does it resume execution?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">A Continuation represents a call-stack snapshot and callback interface. When an asynchronous operation completes, it invokes <code>resumeWith()</code> (or extension methods like <code>resume</code> or <code>resumeWithException</code>), which passes control back to the state machine's execution loop.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does the thread dispatcher intercept the execution when a Continuation resumes?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Treating <code>Continuation</code> as a thread handle, which leads to leaking references in asynchronous listener adapters.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="state-machine">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. Coroutine State Machine</span>
+            <span class="topic-tag">Decompilation</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                The state machine uses an integer label to track execution progress. At each suspension point, the label is updated, and the function returns <code>COROUTINE_SUSPENDED</code>. When the continuation resumes, the function is called again, skipping directly to the current state using a switch block.
+            </p>
+            <pre><code class="language-kotlin">// Simulated decompiled state machine structure
+class FetchHotelStateMachine(completion: Continuation<Any?>) : ContinuationImpl(completion) {
+    var result: Any? = null
+    var label: Int = 0
+    var hotelId: String? = null
+    var token: String? = null
+
+    override fun invokeSuspend(result: Result<Any?>): Any? {
+        this.result = result
+        return fetchHotelDetails(null, this)
+    }
+}
+
+fun fetchHotelDetails(hotelId: String?, completion: Continuation<Any?>): Any? {
+    val sm = completion as? FetchHotelStateMachine ?: FetchHotelStateMachine(completion)
+    
+    switch(sm.label) {
+        case 0:
+            sm.hotelId = hotelId
+            sm.label = 1
+            val res = fetchToken(sm)
+            if (res == COROUTINE_SUSPENDED) return COROUTINE_SUSPENDED
+            // fallthrough if already completed
+        case 1:
+            val token = sm.result as String
+            sm.token = token
+            sm.label = 2
+            val details = fetchApi(token, sm.hotelId!!, sm)
+            if (details == COROUTINE_SUSPENDED) return COROUTINE_SUSPENDED
+            // fallthrough
+        case 2:
+            return sm.result // returns actual Hotel result
+    }
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain the internal state machine created for a suspend function containing two sequential suspensions.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The compiler generates an anonymous subclass of <code>ContinuationImpl</code> with a <code>label</code> field (0, 1, 2, etc.) and fields for arguments and local variables. It routes control flow via a switch statement inside the overridden <code>invokeSuspend()</code> method. Each suspension point is a label increment followed by returning <code>COROUTINE_SUSPENDED</code>. Resuming redirects control flow to the next case.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How are local variables that go out of scope before a suspension point handled by the compiler to prevent leaks?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Failing to account for the overhead of local variables stored in the state machine fields, causing memory load.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="scope-vs-context">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. CoroutineScope vs CoroutineContext</span>
+            <span class="topic-tag">API Design</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                A <code>CoroutineScope</code> is a wrapper around a <code>CoroutineContext</code>. Scopes define the lifecycle and boundaries of coroutines, whereas <code>CoroutineContext</code> is an indexed set of elements (like <code>Job</code>, <code>CoroutineDispatcher</code>, <code>CoroutineName</code>, and <code>CoroutineExceptionHandler</code>).
+            </p>
+            <pre><code class="language-kotlin">// Interface definition showing the relationship
+interface CoroutineScope {
+    val coroutineContext: CoroutineContext
+}
+
+// Combining elements in a context
+val customContext = Dispatchers.IO + Job() + CoroutineName("ExpediaSync")</code></pre>
+            <p>
+                <strong>Memory Implications:</strong> Storing a parent <code>Job</code> in the context establishes parent-child relationships, holding child coroutines in memory until they complete. A leaked scope keeps its associated activities/fragments alive.
+            </p>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What is the difference between CoroutineScope and CoroutineContext?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>CoroutineScope</code> has no behavior other than holding a <code>CoroutineContext</code>. It is a compile-time semantic used to structure launching child coroutines. <code>CoroutineContext</code> is the actual runtime dictionary of configuration elements that dictates how the coroutine executes.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does operator overloading (the plus operator) work under the hood in CoroutineContext?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using a global scope (<code>GlobalScope</code>) rather than a lifecycle-bound scope, leading to unmanaged tasks.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="job-vs-supervisor">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. Job vs SupervisorJob</span>
+            <span class="topic-tag">Concurrecy</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                A standard <code>Job</code> acts as a bidirectional cancellation node: a failure in any child immediately cancels the parent and all sibling jobs. A <code>SupervisorJob</code> overrides this failure propagation behavior, allowing child failures to be handled independently without cancelling siblings or the parent.
+            </p>
+            <pre><code class="language-kotlin">val parentScope = CoroutineScope(Dispatchers.Default + SupervisorJob())
+// Failure in child1 does NOT cancel child2
+val child1 = parentScope.launch { throw RuntimeException("API Failure") }
+val child2 = parentScope.launch { 
+    delay(1000)
+    println("Completed successfully")
+}</code></pre>
+            <p>
+                <strong>Threading & Propagation:</strong> The cancellation propagates up to the nearest parent scope node. If the parent holds a standard <code>Job</code>, the cancellation flows back down to siblings synchronously on the dispatcher's threads.
+            </p>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How does failure propagation differ between Job and SupervisorJob?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Under a standard <code>Job</code>, a child exception causes the parent to fail, which cancels all other children. A <code>SupervisorJob</code> suppresses this upward cancellation propagation, allowing siblings to run uninterrupted.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">If you pass a SupervisorJob to the dispatcher inside <code>launch(SupervisorJob())</code>, does it act as a supervisor for the child coroutines launched inside it?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Instantiating <code>launch(SupervisorJob())</code> expecting child coroutines launched inside it to be supervised. (Passing a Job as an argument to launch establishes it as a parent of that block, not a supervisor for the block's internal launches).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 6 -->
+    <article class="topic-card">
+        <h2 id="dispatchers-pools">
+            <input type="checkbox" class="topic-chk" data-topic="6">
+            <span>6. Dispatchers and Thread Pool Internals</span>
+            <span class="topic-tag">System</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Coroutine dispatchers manage thread-allocation strategies:
+            </p>
+            <ul>
+                <li><strong>Dispatchers.Main:</strong> Bound to the platform's UI thread (uses Looper message queue on Android).</li>
+                <li><strong>Dispatchers.Default:</strong> Backed by a fixed thread pool sized to the host's CPU core count (minimum 2). Optimized for CPU-heavy tasks.</li>
+                <li><strong>Dispatchers.IO:</strong> Backed by an elastic pool capped at 64 threads or the CPU core count (whichever is larger). Reuses threads to offload blocking tasks.</li>
+                <li><strong>Dispatchers.Unconfined:</strong> Starts execution on the caller thread. After a suspension point, it resumes on whatever thread completed the suspension.</li>
+            </ul>
+            <pre><code class="language-kotlin">// Dispatcher sharing limits
+// Shares the thread pool with Default but limits execution concurrency
+val limitedDispatcher = Dispatchers.IO.limitParallelism(4) </code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Describe the thread pool dimensions and limits of Dispatchers.Default and Dispatchers.IO.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>Dispatchers.Default</code> uses a pool containing as many threads as there are CPU cores (min 2). <code>Dispatchers.IO</code> shares threads with the default scheduler but dynamically expands up to 64 threads to prevent stalling during blocking I/O calls.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does <code>Dispatchers.IO.limitParallelism()</code> help prevent thread pool starvation on Android?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Running blocking database queries or network requests directly on <code>Dispatchers.Default</code>, which causes frame drops by starving CPU threads.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 7 -->
+    <article class="topic-card">
+        <h2 id="structured-concurrency">
+            <input type="checkbox" class="topic-chk" data-topic="7">
+            <span>7. Structured Concurrency & Leak Prevention</span>
+            <span class="topic-tag">Concurrecy</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Structured concurrency guarantees that child coroutines are bound to the lifecycle of their parent scope. When a scope cancels, all its active children cancel recursively. Parents wait for their children to finish before completing themselves.
+            </p>
+            <p>
+                <strong>Memory Implications:</strong> Since the parent references all active child jobs, leaks are avoided because canceling the parent clean-releases all internal resources, allowing garbage collection of scope context handles.
+            </p>
+            <pre><code class="language-kotlin">class BookingViewModel : ViewModel() {
+    private val scope = CoroutineScope(Dispatchers.Main + SupervisorJob())
+
+    fun executeBooking() {
+        scope.launch {
+            // Child coroutine inherits context and is bound to parent's lifecycle
+            performSync()
+        }
+    }
+
+    override fun onCleared() {
+        super.onCleared()
+        scope.cancel() // Synchronously cancels all child tasks, preventing memory leaks
+    }
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How does Structured Concurrency prevent background memory leaks on Android?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">It structures coroutine execution hierarchically. By binding children to a parent scope (e.g., <code>viewModelScope</code>), calling <code>scope.cancel()</code> cascades cancellation signals down the tree, terminating active tasks and releasing references to the UI or ViewModel.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What happens to an unhandled exception inside a child coroutine when structured concurrency is active?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Failing to cancel custom scopes inside lifecycle teardowns (like <code>onDestroy()</code>), which leaks operations.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 8 -->
+    <article class="topic-card">
+        <h2 id="cancellation-propagation">
+            <input type="checkbox" class="topic-chk" data-topic="8">
+            <span>8. Cancellation Propagation & CancellationException</span>
+            <span class="topic-tag">Exception</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Cancellation in coroutines is cooperative. When a job is cancelled, its state changes to "Cancelling", and active suspension points throw a <code>CancellationException</code> when invoked. If a coroutine performs blocking work without yielding, it will not react to cancellation.
+            </p>
+            <p>
+                <strong>Exception Handling:</strong> <code>CancellationException</code> is treated as a normal completion signal by the parent job. Parents ignore this exception, but any other child exception will cancel the parent.
+            </p>
+            <pre><code class="language-kotlin">val job = scope.launch(Dispatchers.Default) {
+    while (isActive) { // Cooperative check
+        // Perform CPU calculation
+        ensureActive() // Throws CancellationException if cancelled
+    }
+}
+job.cancel()</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Why does wrapping a suspend call in a generic try-catch block break coroutine cancellation?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">If a try-catch catches all <code>Throwable</code> types and swallows <code>CancellationException</code>, it intercepts the cancellation mechanism. The coroutine fails to propagate the cancellation upward, remaining active in the thread pool. To fix this, either rethrow <code>CancellationException</code> or catch specific exceptions (like <code>IOException</code>).</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do you execute non-cancellable operations (such as saving local database cache on cancel) inside a coroutine?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Swallowing <code>CancellationException</code> or running tight non-suspending loops that do not check <code>isActive</code>.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 9 -->
+    <article class="topic-card">
+        <h2 id="inline-bytecode">
+            <input type="checkbox" class="topic-chk" data-topic="9">
+            <span>9. Inline Functions and Bytecode Impact</span>
+            <span class="topic-tag">Compiler</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Marking a function as <code>inline</code> instructs the compiler to insert the function's bytecode (and its functional arguments) directly into the call site. This eliminates function call overhead and lambda instantiation costs (which create <code>FunctionN</code> instances).
+            </p>
+            <p>
+                <strong>Memory Implications:</strong> Replaces anonymous class allocations with inline instructions, reducing JVM heap churn. However, inlining large functions can bloating the generated <code>.class</code> file size.
+            </p>
+            <pre><code class="language-kotlin">inline fun <T> runQuery(block: () -> T): T {
+    println("Logging query execution")
+    return block()
+}
+
+// Inlined result at JVM compilation
+fun test() {
+    // 'runQuery' code is pasted here directly:
+    println("Logging query execution")
+    // 'block' code is pasted here directly
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What is the JVM bytecode impact of using the 'inline' keyword?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The compiler replaces the function call site with the actual body of the function. For lambdas passed to the inline function, it avoids generating anonymous <code>Function</code> class instances, preventing heap allocation.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">Under what conditions does the Kotlin compiler warn you that inlining does not improve performance?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Inlining large functions that do not take lambdas as parameters. This increases bytecode size without providing performance benefits.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 10 -->
+    <article class="topic-card">
+        <h2 id="crossinline-noinline">
+            <input type="checkbox" class="topic-chk" data-topic="10">
+            <span>10. Crossinline vs Noinline</span>
+            <span class="topic-tag">Compiler</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                By default, inline functional parameters allow **non-local returns** (returning from the calling function). 
+                Use <code>crossinline</code> to prevent non-local returns when a lambda parameter is executed in another context (like inside a nested lambda or runnable).
+                Use <code>noinline</code> to prevent a lambda parameter from being inlined, allowing it to be stored as an object or passed to other functions.
+            </p>
+            <pre><code class="language-kotlin">inline fun execute(
+    crossinline onComplete: () -> Unit,
+    noinline fallback: () -> Unit
+) {
+    val run = Runnable {
+        onComplete() // crossinline required: called from nested anonymous Runnable
+    }
+    run.run()
+    
+    passToAnother(fallback) // noinline required to pass as an object reference
+}
+
+fun passToAnother(action: () -> Unit) {}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Differentiate between crossinline and noinline parameters with practical examples.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>crossinline</code> prevents a lambda from executing a non-local <code>return</code>, allowing the lambda to be invoked inside nested scopes. <code>noinline</code> tells the compiler to treat the lambda parameter as a normal object (a <code>Function</code> instance), allowing it to be stored, returned, or passed around.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">Why are non-local returns forbidden in crossinline parameters at a compilation level?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Confusing the two, such as applying <code>noinline</code> to nested lambda callbacks that require <code>crossinline</code>.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 11 -->
+    <article class="topic-card">
+        <h2 id="reified">
+            <input type="checkbox" class="topic-chk" data-topic="11">
+            <span>11. Reified Type Parameters</span>
+            <span class="topic-tag">Generics</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Java generics use **type erasure**, removing generic type arguments at compile time. 
+                In Kotlin, marking an inline function parameter with <code>reified</code> preserves type information at runtime. The compiler achieves this by substituting the generic type placeholder with the concrete class reference at the call site.
+            </p>
+            <pre><code class="language-kotlin">// Kotlin Source
+inline fun <reified T> fetchCache(key: String): T? {
+    val value = getFromStore(key)
+    return if (value is T) value else null // type checks are valid
+}
+
+// JVM replacement at call site:
+val hotel = fetchCache<Hotel>("hotel_101")
+// Compiles to:
+val value = getFromStore("hotel_101")
+val hotel = if (value is Hotel) value else null</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How does 'reified' work under the hood, and why must the function be inlined?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">JVM generic type erasure removes type parameters at runtime. <code>reified</code> works by inlining the function. During inlining, the compiler replaces the generic parameter placeholder (e.g. <code>T</code>) with the concrete type class literal (e.g. <code>Hotel::class.java</code>) at the call site. This type parameter substitution is only possible because the function is inlined.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">Can you access reified type parameters from Java code? Why or why not?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Attempting to call reified functions from Java classes (Java does not support Kotlin's compile-time inlining).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 12 -->
+    <article class="topic-card">
+        <h2 id="sealed-vs-enum">
+            <input type="checkbox" class="topic-chk" data-topic="12">
+            <span>12. Sealed Classes vs Enums vs Abstract Classes</span>
+            <span class="topic-tag">OOP</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Compare the compiler and memory behavior of these object-oriented patterns:
+            </p>
+            <ul>
+                <li><strong>Enums:</strong> Compiled to a flat set of final singleton instances. They cannot hold instance-specific dynamic data.</li>
+                <li><strong>Sealed Classes:</strong> Closed type hierarchies. Subclasses can have multiple instances, each with unique constructor properties. Compiled with a private constructor and a list of subclasses.</li>
+                <li><strong>Abstract Classes:</strong> Open hierarchies designed for inheritance, allowing subclasses to be defined anywhere in the application. They do not enforce compile-time exhaustiveness checks in <code>when</code> expressions.</li>
+            </ul>
+            <pre><code class="language-kotlin">sealed class ExpediaState {
+    object Idle : ExpediaState() // Compiled as a JVM Singleton
+    data class Success(val hotels: List<Hotel>) : ExpediaState() // Stateful instantiation
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How do sealed classes differ from enums, and how does the compiler enforce exhaustiveness?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Enums are limited to constant singletons. Sealed classes are closed type hierarchies, allowing subclasses to have stateful instances. The compiler enforces exhaustiveness by checking the list of declared subclasses (metadata stored in class files) when evaluation occurs in <code>when</code> blocks, throwing a compiler error if any subclass is unhandled.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What are the class loader and garbage collection differences between sealed objects and sealed data class instances?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Declaring sealed subclasses as <code>class</code> instead of <code>object</code> when they hold no state, causing unnecessary object allocations.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 13 -->
+    <article class="topic-card">
+        <h2 id="data-class-internals">
+            <input type="checkbox" class="topic-chk" data-topic="13">
+            <span>13. Data Classes Internals</span>
+            <span class="topic-tag">JVM</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                A <code>data class</code> instructs the compiler to generate standard boilerplate code based on the properties declared in the primary constructor: <code>equals()</code>, <code>hashCode()</code>, <code>toString()</code>, <code>copy()</code>, and <code>componentN()</code> methods.
+            </p>
+            <p>
+                <strong>Memory Implications:</strong> The <code>componentN</code> methods support destructuring declarations but can generate reference overhead in loops. 
+                Properties declared outside the primary constructor are ignored by the compiler-generated methods, which can lead to unexpected behavior.
+            </p>
+            <pre><code class="language-kotlin">// Kotlin Source
+data class User(val id: Int, val name: String)
+
+// Generated bytecodes support:
+val user = User(1, "John")
+val (id, name) = user // Translates to: val id = user.component1(); val name = user.component2()</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What happens under the hood when a data class is compiled, and what are the limitations of destructuring?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The compiler generates <code>equals()</code>, <code>hashCode()</code>, <code>toString()</code>, <code>copy()</code>, and <code>componentN()</code> methods using only the properties declared in the primary constructor. Destructuring compiles to sequential <code>componentN()</code> calls, which can cause subtle bugs if properties in the constructor are reordered.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does the generated copy method handle shallow vs deep copies of nested mutable objects?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Assuming <code>dataClass.copy()</code> performs a deep copy of nested mutable objects (it only copies reference addresses, creating a shallow copy).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 14 -->
+    <article class="topic-card">
+        <h2 id="generics-variance">
+            <input type="checkbox" class="topic-chk" data-topic="14">
+            <span>14. Generics Variance (out, in, * )</span>
+            <span class="topic-tag">Generics</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Generics in Kotlin use declaration-site variance to control subtyping relationships:
+            </p>
+            <ul>
+                <li><strong>Covariance (<code>out T</code>):</strong> Restricts the generic type to read-only positions (producer). Subtyping is preserved: <code>Producer&lt;Dog&gt;</code> is a subtype of <code>Producer&lt;Animal&gt;</code>.</li>
+                <li><strong>Contravariance (<code>in T</code>):</strong> Restricts the generic type to write-only positions (consumer). Subtyping is reversed: <code>Consumer&lt;Animal&gt;</code> is a subtype of <code>Consumer&lt;Dog&gt;</code>.</li>
+                <li><strong>Star Projection (<code>*</code>):</strong> Used when the type argument is unknown. It acts as <code>out Any?</code> for reads and <code>Nothing</code> for writes.</li>
+            </ul>
+            <pre><code class="language-kotlin">interface Producer<out T> {
+    fun produce(): T // Allowed: T is in out-position
+    // fun consume(item: T) // Error: T is in in-position
+}
+
+interface Consumer<in T> {
+    fun consume(item: T) // Allowed: T is in in-position
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain the covariance and contravariance rules in Kotlin and their equivalent Java wildcards.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>out T</code> represents covariance (equivalent to Java's <code>? extends T</code>), restricting type parameters to producer positions to preserve subtyping relationships. <code>in T</code> represents contravariance (equivalent to Java's <code>? super T</code>), restricting type parameters to consumer positions to invert subtyping relationships.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">Why does the Kotlin compiler allow 'out' variables to be used in 'in' positions inside private or constructor arguments?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Declaring a list parameter as invariant when it only reads elements, preventing callers from passing lists of subclasses.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 15 -->
+    <article class="topic-card">
+        <h2 id="by-lazy">
+            <input type="checkbox" class="topic-chk" data-topic="15">
+            <span>15. by lazy Internals & LazyThreadSafetyMode</span>
+            <span class="topic-tag">Delegation</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                The <code>by lazy</code> delegate implements lazy initialization. By default, it uses <code>SynchronizedLazyImpl</code>, which uses a double-checked locking pattern to ensure thread safety during initialization.
+            </p>
+            <p>
+                <strong>LazyThreadSafetyMode:</strong>
+            </p>
+            <ul>
+                <li><strong>SYNCHRONIZED:</strong> Thread-safe initialization using double-checked locking.</li>
+                <li><strong>PUBLICATION:</strong> Multiple threads can execute the initialization block concurrently, but only the value returned by the first completing thread is retained.</li>
+                <li><strong>NONE:</strong> No thread synchronization. Faster execution, but unsafe for concurrent access.</li>
+            </ul>
+            <pre><code class="language-kotlin">// Thread-safe default (SYNCHRONIZED)
+val dbConnection by lazy { initDatabase() }
+
+// Explicit non-synchronized for UI-thread only
+val uiAdapter by lazy(LazyThreadSafetyMode.NONE) { LocalAdapter() }</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What are the thread-safety modes of 'by lazy', and how does the default mode ensure safety?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The three modes are <code>SYNCHRONIZED</code>, <code>PUBLICATION</code>, and <code>NONE</code>. The default mode (<code>SYNCHRONIZED</code>) uses <code>SynchronizedLazyImpl</code>, which implements a double-checked locking pattern on a synchronization lock object to guarantee that the initialization block runs only once across all threads.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What are the memory layout implications of storing references to the initialization lambda inside SynchronizedLazyImpl?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using the default <code>SYNCHRONIZED</code> mode for properties initialized exclusively on the Android main thread, incurring lock overhead.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 16 -->
+    <article class="topic-card">
+        <h2 id="custom-delegates">
+            <input type="checkbox" class="topic-chk" data-topic="16">
+            <span>16. Observable and Vetoable Delegates</span>
+            <span class="topic-tag">Delegation</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                <code>Delegates.observable</code> executes a callback block immediately after a property value is modified. 
+                <code>Delegates.vetoable</code> executes a predicate before modifying a property, allowing the callback to reject the modification.
+            </p>
+            <pre><code class="language-kotlin">import kotlin.properties.Delegates
+
+var hotelPrice: Int by Delegates.observable(100) { prop, old, new ->
+    println("Price changed from $old to $new")
+}
+
+var roomCount: Int by Delegates.vetoable(1) { prop, old, new ->
+    new >= 0 // Reject negative room counts
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain the mechanics of vetoable property delegation.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>Delegates.vetoable</code> takes a predicate lambda that returns a boolean. When the property is assigned a new value, the delegate executes this predicate. If it evaluates to <code>true</code>, the value is updated. If <code>false</code>, the assignment is rejected, and the property retains its previous value.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does the Kotlin compiler transform delegate declarations into JVM fields?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Assuming <code>observable</code> is asynchronous. The callback block executes synchronously on the calling thread.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 17 -->
+    <article class="topic-card">
+        <h2 id="extension-functions">
+            <input type="checkbox" class="topic-chk" data-topic="17">
+            <span>17. Extension Functions compiled as Static Methods</span>
+            <span class="topic-tag">JVM</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Extension functions do not modify the receiver class. Instead, they compile to Java static methods where the receiver instance is passed as the first parameter. Because of this, extension functions are resolved **statically**, not polymorphically.
+            </p>
+            <pre><code class="language-kotlin">// Kotlin Source
+fun String.shout(): String = this.uppercase()
+
+// JVM Bytecode representation
+public static final String shout(String $receiver) {
+    return $receiver.toUpperCase();
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Why are extension functions not polymorphic? Prove it using static resolution rules.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Because they compile to static JVM methods. If an extension function is defined for both a base class and a subclass, the version that executes is determined by the static compiler type of the variable reference, not the concrete runtime class of the receiver.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do you invoke a Kotlin extension function from a Java class?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Defining an extension function with the same signature as a member function of a class and expecting the extension to take precedence (member functions always win).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 18 -->
+    <article class="topic-card">
+        <h2 id="scope-matrix">
+            <input type="checkbox" class="topic-chk" data-topic="18">
+            <span>18. Scope Functions Decision Matrix</span>
+            <span class="topic-tag">API Design</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Scope functions alter how variables are referenced and returned inside blocks:
+            </p>
+            <div class="comparison-table-wrapper">
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Function</th>
+                            <th>Receiver (this vs it)</th>
+                            <th>Return Value</th>
+                            <th>Typical Use Case</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="comparison-feature">let</td>
+                            <td>it</td>
+                            <td>Lambda Result</td>
+                            <td>Nullable checks, mapping objects</td>
+                        </tr>
+                        <tr>
+                            <td class="comparison-feature">run</td>
+                            <td>this</td>
+                            <td>Lambda Result</td>
+                            <td>Calculations, object configuration</td>
+                        </tr>
+                        <tr>
+                            <td class="comparison-feature">with</td>
+                            <td>this</td>
+                            <td>Lambda Result</td>
+                            <td>Grouping multiple calls on a non-null object</td>
+                        </tr>
+                        <tr>
+                            <td class="comparison-feature">apply</td>
+                            <td>this</td>
+                            <td>Receiver Instance</td>
+                            <td>Object initialization (builder pattern)</td>
+                        </tr>
+                        <tr>
+                            <td class="comparison-feature">also</td>
+                            <td>it</td>
+                            <td>Receiver Instance</td>
+                            <td>Side effects, logging, validation</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            <pre><code class="language-kotlin">// Example mapping block
+val hotelDetails = hotel?.let {
+    transformToModel(it)
+} ?: defaultModel()</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Compare 'apply' and 'also' in terms of receiver type and return values.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Both return the receiver instance. The difference lies in how the receiver is referenced: <code>apply</code> references the receiver as <code>this</code>, while <code>also</code> references it as <code>it</code>. Use <code>apply</code> for configuring properties and <code>also</code> for executing side effects (like logging) without shadowing outer <code>this</code> references.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What are the bytecode differences between 'let' and 'with' when processing non-null operations?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Nesting multiple <code>let</code> blocks, which shadows the implicit <code>it</code> parameter and reduces code readability.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 19 -->
+    <article class="topic-card">
+        <h2 id="collections-internals">
+            <input type="checkbox" class="topic-chk" data-topic="19">
+            <span>19. Collections Internals</span>
+            <span class="topic-tag">Structures</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Kotlin collection instances leverage Java Standard Library types on JVM:
+            </p>
+            <ul>
+                <li><strong>ArrayList:</strong> Backed by a dynamic array. When the array fills up, it allocates a new array that is 1.5x to 2x larger, copying the old elements over. This resize operation incurs an O(N) memory allocation and copy cost.</li>
+                <li><strong>HashMap:</strong> Uses an array of buckets. When the number of entries exceeds the threshold determined by the load factor (default <code>0.75</code>), it triggers a rehashing process, allocating a larger array and moving all existing entries to new bucket locations.</li>
+                <li><strong>LinkedHashMap:</strong> Extends HashMap by adding a doubly-linked list running through all its entries. This list maintains insertion (or access) order, requiring more memory per node compared to a standard HashMap.</li>
+            </ul>
+            <pre><code class="language-kotlin">// Memory cost analysis
+val map = hashMapOf<String, Int>() // Allocates default bucket array of size 16
+// Each entry node requires: object header + hash int + key ref + value ref + next node ref</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How does HashMap handle collisions, and what changes occur under the hood during rehashing?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Collisions are handled using chaining with linked lists, which upgrade to balanced red-black trees when a bucket's size exceeds 8 elements (treeification). When the size exceeds the load factor threshold (0.75 * capacity), it doubles the capacity, re-evaluates the hash index for each entry, and moves them to new buckets, which incurs an O(N) overhead.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What are the garbage collection implications of using collections with long-lived references on Android?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Failing to specify an initial capacity for large lists or maps, resulting in multiple expensive array resizes and garbage collection churn during insertion.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

@@ -1,0 +1,588 @@
+<div class="section-content">
+    <h1>Android Fundamentals & Internals</h1>
+    <div class="section-meta">
+        <span>⏱ 20 min read</span>
+        <span>✓ Round 1 Core</span>
+    </div>
+
+    <p class="section-intro">
+        Comprehensive guide covering Android framework internals, OS lifecycle mechanisms, IPC protocols, execution environments (ART), memory management, and start-up optimizations.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="activity-lifecycle">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. Activity Lifecycle & State Restoration Edge Cases</span>
+            <span class="topic-tag">Framework</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                The Activity lifecycle undergoes complex state transitions. Since Android 9 (API 28), <code>onSaveInstanceState()</code> is guaranteed to be called after <code>onStop()</code>. 
+            </p>
+            <p>
+                <strong>Memory & Process Death:</strong> Calling <code>finish()</code> explicitly removes the activity instance and clears its state, signaling that the user has completed the flow. In contrast, <strong>system-initiated process death</strong> occurs when the OS reclaims resources under low memory conditions. In this case, the process is killed without calling <code>onDestroy()</code>, but the saved state bundle is preserved in the system-wide <code>ActivityManagerService</code> process memory to allow restoration.
+            </p>
+            <pre><code class="language-kotlin">override fun onSaveInstanceState(outState: Bundle) {
+    super.onSaveInstanceState(outState)
+    // SavedState bundle is sent across Binder to ActivityManagerService
+    outState.putString("booking_id", currentBookingId)
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain the lifecycle differences between a user calling finish() and the system killing the process.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">When <code>finish()</code> is called, the activity transitions through <code>onPause</code>, <code>onStop</code>, and <code>onDestroy</code>, releasing all associated memory and state. During system-initiated process death, the process is killed directly (often from the background state). The system preserves the state bundle returned by <code>onSaveInstanceState()</code> in system server memory, bypassing <code>onDestroy()</code>. When the user returns, the activity is recreated, receiving the saved bundle in <code>onCreate()</code>.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">Where is the saved state bundle stored during process death, and what are its size limitations?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Saving large data structures (like search result lists) in <code>onSaveInstanceState()</code>, triggering a <code>TransactionTooLargeException</code>.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="fragment-lifecycle">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. Fragment Lifecycle & viewLifecycleOwner</span>
+            <span class="topic-tag">Framework</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                A Fragment has two distinct lifecycles: the Fragment instance lifecycle and the Fragment view lifecycle. The view can be destroyed and recreated (for example, when a fragment is placed on the backstack) while the Fragment instance itself survives.
+            </p>
+            <p>
+                <strong>Memory Implications:</strong> Observing LiveData or Flow in a Fragment using the fragment's instance lifecycle (<code>this</code>) leads to memory leaks and duplicate emissions. Because the fragment instance survives view destruction, the observer reference remains active, preventing the view hierarchy from being garbage collected. Using <code>viewLifecycleOwner</code> ensures observers are automatically unregistered when the view is destroyed.
+            </p>
+            <pre><code class="language-kotlin">override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+    super.onViewCreated(view, savedInstanceState)
+    
+    // SAFE: viewLifecycleOwner scope cleans up observers on view destruction
+    viewModel.hotelDetails.observe(viewLifecycleOwner) { details ->
+        binding.hotelName.text = details.name
+    }
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Why does Fragment have viewLifecycleOwner, and what bugs occur if you use 'this' as the LifecycleOwner?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Fragment views can be destroyed (e.g., when replaced and placed on the backstack) while the fragment instance remains alive. If you observe LiveData using <code>this</code>, the observer reference is retained. When the fragment returns and recreates its view, a duplicate observer is registered, causing memory leaks and duplicate UI updates. Using <code>viewLifecycleOwner</code> binds observers to the view's lifecycle instead of the fragment instance.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How should you clean up ViewBinding references in <code>onDestroyView()</code> to prevent leaks?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Failing to set the backing property of a ViewBinding reference to null in <code>onDestroyView()</code>, leaking the entire view hierarchy in backstack transitions.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="viewmodel-survival">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. ViewModel Survival Mechanics</span>
+            <span class="topic-tag">Framework</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                ViewModels survive configuration changes (such as screen rotations) by using a <code>ViewModelStore</code>. This store is retained by the host activity or fragment using a non-configuration instance mechanism (<code>NonConfigurationInstances</code>).
+            </p>
+            <p>
+                <strong>Memory & Lifecycle:</strong> When a configuration change occurs, the activity is destroyed, but the <code>ViewModelStore</code> instance is passed to the new activity instance via the <code>Activity.retainNonConfigurationInstances()</code> hook. The ViewModel is only destroyed and cleared (invoking <code>onCleared()</code>) when the host activity is finished or the fragment is removed.
+            </p>
+            <pre><code class="language-kotlin">// Internals of how ViewModelStore obtains instances
+val viewModelProvider = ViewModelProvider(this)
+val myViewModel = viewModelProvider.get(MyViewModel::class.java)
+// Resolves to: owner.getViewModelStore().get(key)</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How does a ViewModel survive configuration changes but not process death?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">During configuration changes, the activity is recreated, but the system passes the original <code>ViewModelStore</code> to the new instance via <code>retainNonConfigurationInstances()</code>. During process death, the host process is terminated, destroying the <code>ViewModelStore</code> and all ViewModels in memory. The system only retains the saved state bundle, which must be restored using a <code>SavedStateHandle</code>.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does <code>SavedStateHandle</code> communicate changes back to the system server processes?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Storing references to views, contexts, or activity instances inside a ViewModel, causing leaks when the activity is recreated.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="looper-messagequeue">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. Looper, MessageQueue, and IdleHandler Internals</span>
+            <span class="topic-tag">Threading</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Android's main thread runs an infinite loop managed by a <code>Looper</code>, which processes events dispatched to its <code>MessageQueue</code>. The thread is kept alive without consuming 100% CPU because it blocks when the queue is empty using a native blocking mechanism (Linux `epoll`).
+            </p>
+            <p>
+                <strong>IdleHandler:</strong> An <code>IdleHandler</code> is a callback interface that executes tasks only when the message queue has processed all pending messages and is about to block for new ones. This is useful for executing low-priority tasks (such as pre-fetching data or reporting analytics) without blocking the startup path.
+            </p>
+            <pre><code class="language-kotlin">// Registering an IdleHandler
+Looper.myQueue().addIdleHandler {
+    // Run lower priority work here
+    reportDeferredAnalytics()
+    false // Return false to run once, true to run on subsequent idle cycles
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How does the main thread Looper stay active without blocking the CPU, and what is an IdleHandler?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The main thread <code>Looper.loop()</code> is an infinite loop that calls <code>MessageQueue.next()</code>. If no messages are pending, it blocks using native code via the Linux <code>epoll_wait</code> system call, suspending the thread until a new event is written to the file descriptor. An <code>IdleHandler</code> is a callback executed when the queue has completed its current work and is about to block, allowing tasks to run without delaying frame rendering.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What happens if an IdleHandler returns true instead of false?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Running long-running or blocking work inside an <code>IdleHandler</code>, blocking the main thread and causing ANRs when a user interaction event arrives.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="handler-leak">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. Handler Memory Leak Pattern and Fix</span>
+            <span class="topic-tag">Memory</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                A common source of leaks is declaring a non-static inner class subclass of <code>Handler</code>. Non-static inner classes retain an implicit reference to their enclosing class (such as an Activity).
+            </p>
+            <p>
+                <strong>Leak Mechanics:</strong> When a message is posted to a <code>Handler</code>, it is wrapped in a <code>Message</code> object. The <code>message.target</code> field holds a reference to the Handler. Since the Message is queued in the main thread's <code>MessageQueue</code> (which lives as long as the process), the Handler and its enclosing Activity are leaked until the message is processed.
+            </p>
+            <pre><code class="language-kotlin">// LEAKY: Non-static inner class Handler
+class BookingActivity : Activity() {
+    private val handler = object : Handler(Looper.getMainLooper()) {
+        override fun handleMessage(msg: Message) {
+            // Implicitly references BookingActivity.this
+        }
+    }
+}
+
+// FIX: Static class (nested class) + WeakReference
+class SafeBookingActivity : Activity() {
+    private val handler = SafeHandler(this)
+    
+    private class SafeHandler(activity: SafeBookingActivity) : Handler(Looper.getMainLooper()) {
+        private val activityRef = WeakReference(activity)
+        
+        override fun handleMessage(msg: Message) {
+            val activity = activityRef.get()
+            if (activity != null) {
+                // Update UI safely
+            }
+        }
+    }
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain the memory reference path that causes a leak when using a non-static Handler.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The GC reference path is: Main Thread -> Looper -> MessageQueue -> Message -> target (Handler) -> outer class (Activity). Because the message retains a reference to the handler, and the handler retains an implicit reference to the activity, the activity cannot be garbage collected as long as the message is in the queue. The fix is to use a nested (static) handler class that references the activity via a <code>WeakReference</code>.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">Does canceling messages in <code>onDestroy()</code> using <code>handler.removeCallbacksAndMessages(null)</code> prevent leaks?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Assuming that because an activity's <code>onDestroy()</code> has been called, all handlers and runnables posted to the main thread are cleaned up automatically.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 6 -->
+    <article class="topic-card">
+        <h2 id="binder-ipc">
+            <input type="checkbox" class="topic-chk" data-topic="6">
+            <span>6. Binder IPC Limits & Mechanics</span>
+            <span class="topic-tag">System</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Binder is the core Inter-Process Communication (IPC) mechanism in Android. It uses a shared memory buffer mapped between the calling process and the target process. This shared buffer has a **1MB transaction limit** per process, which is shared across all active Binder transactions.
+            </p>
+            <p>
+                <strong>One-way Calls & Death Recipients:</strong>
+            </p>
+            <ul>
+                <li><strong>One-way Calls:</strong> Asynchronous, non-blocking calls. The caller process does not wait for a return value. These transactions have a smaller buffer limit (typically 64KB) to prevent a single process from exhausting the shared Binder buffer.</li>
+                <li><strong>Death Recipient:</strong> A callback interface registered by a client process (using <code>IBinder.linkToDeath</code>) to receive a notification if the target service process terminates unexpectedly.</li>
+            </ul>
+            <pre><code class="language-kotlin">// Listening to process termination
+val binder: IBinder = serviceConnection.getBinder()
+val deathRecipient = IBinder.DeathRecipient {
+    // Handle remote service crash
+    reconnectToService()
+}
+binder.linkToDeath(deathRecipient, 0)</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What is the Binder transaction buffer limit, and how do you handle remote service crashes?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The Binder transaction buffer limit is 1MB, shared across all active transactions for the process. For asynchronous one-way calls, the limit is lower (typically 64KB) to prevent buffer starvation. Service crashes are handled by registering an <code>IBinder.DeathRecipient</code>, which triggers a callback when the Binder channel is severed.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">Why does a one-way Binder call return immediately even if the target service is busy?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Passing large bitmaps or lists across Intents or bound services, causing a <code>TransactionTooLargeException</code>.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 7 -->
+    <article class="topic-card">
+        <h2 id="art-runtime">
+            <input type="checkbox" class="topic-chk" data-topic="7">
+            <span>7. ART Runtime Compilation Tiers</span>
+            <span class="topic-tag">System</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                The Android Runtime (ART) uses a hybrid compilation strategy:
+            </p>
+            <ul>
+                <li><strong>Interpreter:</strong> Executed immediately upon app startup to parse Dex code, avoiding compilation overhead.</li>
+                <li><strong>Just-In-Time (JIT):</strong> Profiles hot code paths during execution, compiling them to native machine code on the fly to improve runtime performance.</li>
+                <li><strong>Ahead-Of-Time (AOT):</strong> Profiles from JIT execution are stored in profile files. When the device is idle and charging, the background compilation daemon (<code>dex2oat</code>) compiles these hot code paths to native code, reducing execution overhead on subsequent runs.</li>
+            </ul>
+            <p>
+                <strong>Memory Implications:</strong> AOT-compiled code resides in shared memory segments, reducing execution overhead and startup times. However, excessive AOT compilation increases storage consumption.
+            </p>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain the relationship between the JIT compiler, profiles, and background AOT compilation in ART.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">ART starts by interpreting the dex bytecode. As the app runs, the JIT compiler monitors execution and identifies "hot" methods, compiling them to native code in memory and saving their metadata to profile files. When the device is idle and charging, the system background compiler uses these profiles to perform target AOT compilation for those hot paths, saving storage space while optimizing future startup times.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does ART profile-guided compilation improve application memory footprint?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Assuming that because an app starts, all code is compiled to native machine code immediately (it runs via the interpreter/JIT hybrid).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 8 -->
+    <article class="topic-card">
+        <h2 id="garbage-collection">
+            <input type="checkbox" class="topic-chk" data-topic="8">
+            <span>8. Garbage Collection and GC Pauses</span>
+            <span class="topic-tag">Memory</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                ART uses a generational garbage collection (GC) scheme. Objects are allocated in the **Young Generation** space. Active objects are promoted to the **Old Generation** space if they survive multiple collection cycles.
+            </p>
+            <p>
+                <strong>GC Pauses & Triggers:</strong> ART performs concurrent collections to minimize stop-the-world pauses. However, GC pauses can still occur if the allocation rate exceeds the garbage collection rate, or when moving objects during compaction to resolve memory fragmentation. Frequent allocations in tight loops (such as inside custom drawing loops) trigger GC thrashing, resulting in dropped frames.
+            </p>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What triggers stop-the-world pauses in ART's Generational GC, and how does it affect frame rates?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Stop-the-world pauses are triggered during the marking phase (to capture a consistent state snapshot of the object reference tree) and the compaction phase (when moving objects to defragment memory). If these pauses exceed the 16.6ms frame rendering threshold, they block the UI thread, resulting in dropped frames (jank).</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does the ART concurrent copying collector reduce pauses compared to the older Dalvik mark-sweep collector?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Creating short-lived objects (such as paint objects, iterators, or formatted strings) inside <code>onDraw()</code>, triggering GC churn and UI lag.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 9 -->
+    <article class="topic-card">
+        <h2 id="leaks-catalogue">
+            <input type="checkbox" class="topic-chk" data-topic="9">
+            <span>9. Memory Leaks Catalogue</span>
+            <span class="topic-tag">Memory</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Common Android memory leak patterns and their corresponding fixes:
+            </p>
+            <ul>
+                <li><strong>Static Context References:</strong> Storing a reference to an Activity context in a static field leaks the Activity after destruction. <em>Fix: Use <code>context.applicationContext</code> or avoid static fields.</em></li>
+                <li><strong>Anonymous Runnable:</strong> Registering an anonymous runnable with a background thread or executor service leaks the enclosing Activity. <em>Fix: Cancel tasks in lifecycle teardown methods.</em></li>
+                <li><strong>Unregistered Listeners:</strong> Registering callback listeners (such as location services or custom bus systems) without unregistering them leaks the observer. <em>Fix: Unregister location listeners in <code>onStop()</code> or <code>onDestroy()</code>.</em></li>
+            </ul>
+            <pre><code class="language-kotlin">// LEAK: Anonymous listener callback leak
+class LocationActivity : Activity() {
+    override fun onStart() {
+        super.onStart()
+        LocationManager.registerListener(object : LocationListener {
+            override fun onLocationChanged(loc: Location) {
+                updateUI(loc)
+            }
+        })
+    }
+    // Leak if not unregistered in onStop()
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">List three common memory leak patterns in Android and their mitigation strategies.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">1. Static context reference: Avoid holding Activity references in static fields; use the Application context instead. 2. Anonymous callback tasks: Cancel pending tasks (such as handlers or coroutines) in lifecycle teardown methods. 3. Unregistered listeners: Unregister listeners (like location updates or custom event bus systems) in the corresponding lifecycle teardown method (e.g. unregister in <code>onStop()</code> if registered in <code>onStart()</code>).</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does the LeakCanary library detect memory leaks at runtime?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Assuming that declaring a listener as a lambda instead of an anonymous class avoids leaks. (Lambdas that access outer class properties compile to classes that retain a reference to the enclosing object).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 10 -->
+    <article class="topic-card">
+        <h2 id="app-startup">
+            <input type="checkbox" class="topic-chk" data-topic="10">
+            <span>10. App Startup Optimization & Perfetto</span>
+            <span class="topic-tag">Performance</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                App startup modes are categorized by the state of the process:
+            </p>
+            <ul>
+                <li><strong>Cold Start:</strong> The system creates the application process from scratch, initializes the class loader, and instantiates components.</li>
+                <li><strong>Warm Start:</strong> The process is already running, but the activity must be recreated from scratch (e.g., after the activity is killed in the background).</li>
+                <li><strong>Hot Start:</strong> The activity is still in memory and is brought to the foreground, requiring only view traversal and rendering.</li>
+            </ul>
+            <p>
+                <strong>Optimization:</strong> Measuring startup bottlenecks is done using **Perfetto** tracing. Content Provider initialization runs before the <code>Application.onCreate()</code> method, which can delay cold startup. The **Jetpack App Startup** library addresses this by grouping initializers into a single shared Content Provider, reducing overhead.
+            </p>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain the differences between cold, warm, and hot starts, and how you optimize Content Provider initialization overhead.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Cold starts involve process initialization and class loading, warm starts recreate the activity in an existing process, and hot starts simply bring the activity to the foreground. Content Providers initialize before <code>Application.onCreate()</code>, which can delay startup. To optimize this, use the Jetpack App Startup library to bundle multiple initializers into a single shared provider, reducing initialization overhead.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do baseline profiles help optimize app startup times in the Android Runtime?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Initializing third-party libraries synchronously inside <code>Application.onCreate()</code> instead of deferring or executing them on background threads.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 11 -->
+    <article class="topic-card">
+        <h2 id="state-restoration">
+            <input type="checkbox" class="topic-chk" data-topic="11">
+            <span>11. Process Death State Restoration Strategy</span>
+            <span class="topic-tag">Framework</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                To handle system-initiated process death gracefully, Expedia apps implement a three-tiered state restoration strategy:
+            </p>
+            <ul>
+                <li><strong>SavedStateHandle:</strong> Retains transient UI state (such as text input or selected filters) across process death. This state is stored in the system server's Binder memory.</li>
+                <li><strong>Room/Local Database:</strong> Serves as the single source of truth, persisting large user datasets (such as cached search results) that exceed Binder size limits.</li>
+                <li><strong>Network:</strong> Re-fetches fresh data if the cached local database records have expired or are missing.</li>
+            </ul>
+            <pre><code class="language-kotlin">class SearchViewModel(
+    private val savedStateHandle: SavedStateHandle,
+    private val repository: HotelRepository
+) : ViewModel() {
+    
+    // UI state flows from SavedStateHandle, surviving process death
+    val hotelQuery = savedStateHandle.getStateFlow("query", "Expedia Hotel")
+    
+    fun updateQuery(newQuery: String) {
+        savedStateHandle["query"] = newQuery
+    }
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Design a state restoration strategy that handles process death for a hotel booking checkout screen.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Combine <code>SavedStateHandle</code> and a local Room database. Store transient inputs (such as names or selections) in <code>SavedStateHandle</code>, and persist heavy booking data in the Room database. On recreation, initialize the ViewModel using the ID retrieved from <code>SavedStateHandle</code>, and load the booking details from the local Room database to restore the screen state.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What is the difference between ViewModel state preservation and SavedStateHandle state preservation?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Assuming that because ViewModels survive rotation, they also survive process death. (ViewModels are cleared when the host process is terminated).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 12 -->
+    <article class="topic-card">
+        <h2 id="workmanager-internals">
+            <input type="checkbox" class="topic-chk" data-topic="12">
+            <span>12. WorkManager Internals</span>
+            <span class="topic-tag">Framework</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                WorkManager executes deferrable, guaranteed background work. It chooses the underlying scheduler based on the device's API level: <code>JobScheduler</code> on API 23+, and a fallback scheduler using <code>AlarmManager</code> and <code>BroadcastReceiver</code> on older API levels.
+            </p>
+            <p>
+                <strong>Constraint Matching:</strong> WorkManager monitors device constraints (such as network availability or charging state) before executing a task. Work tasks can be chained sequentially or in parallel, with intermediate data passed between tasks using key-value bundles.
+            </p>
+            <pre><code class="language-kotlin">val uploadRequest = OneTimeWorkRequestBuilder<UploadWorker>()
+    .setConstraints(Constraints.Builder()
+        .setRequiredNetworkType(NetworkType.CONNECTED)
+        .setRequiresCharging(true)
+        .build())
+    .build()
+
+WorkManager.getInstance(context).enqueue(uploadRequest)</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How does WorkManager select its scheduling mechanism, and how does it guarantee task execution?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">WorkManager delegates execution to <code>JobScheduler</code> on API 23+ and falls back to a custom combination of <code>AlarmManager</code> and broadcast receivers on older APIs. It guarantees execution by persisting task metadata in an internal SQLite database, allowing tasks to resume even if the device restarts.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does WorkManager handle task execution failures and configure retry backoff policies?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using <code>WorkManager</code> to run immediate, short-lived tasks that must execute on the current thread, rather than using standard coroutines.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 13 -->
+    <article class="topic-card">
+        <h2 id="foreground-android14">
+            <input type="checkbox" class="topic-chk" data-topic="13">
+            <span>13. Foreground Service Requirements post Android 14</span>
+            <span class="topic-tag">System</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Starting in Android 14 (API 34), applications must declare specific **foreground service types** in their manifest. You must also request the appropriate type-specific permission (e.g. <code>FOREGROUND_SERVICE_LOCATION</code>) before launching the service.
+            </p>
+            <p>
+                <strong>System Restrictions:</strong> The OS terminates foreground services that fail to declare a type, lack the appropriate runtime permissions, or violate background execution limits.
+            </p>
+            <pre><code class="language-xml">&lt;!-- Manifest Declaration requirement --&gt;
+&lt;service
+    android:name=".HotelSyncService"
+    android:foregroundServiceType="dataSync"
+    android:exported="false" /&gt;</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What changes were introduced for Foreground Services in Android 14, and what steps are required to launch one?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Android 14 requires declaring specific foreground service types in the manifest. To launch a foreground service, you must: 1. Request the general foreground service permission. 2. Request the type-specific runtime permission (if required). 3. Start the service. 4. Call <code>startForeground()</code>, passing the matching type parameter within 10 seconds of startup.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">Under what conditions does launching a foreground service trigger a BackgroundServiceStartNotAllowedException?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Failing to declare the service type in the manifest or attempting to start a foreground service from the background on newer Android versions.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

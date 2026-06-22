@@ -1,0 +1,394 @@
+<div class="section-content">
+    <h1>Solution Design (Round 2 Architecture)</h1>
+    <div class="section-meta">
+        <span>⏱ 25 min read</span>
+        <span>✓ Round 2 Core</span>
+    </div>
+
+    <p class="section-intro">
+        Architecture designs for key travel application features. Focuses on offline-first synchronization, real-time streams, caching strategies, and data pipelines.
+    </p>
+
+    <!-- PROBLEM 1 -->
+    <article class="topic-card">
+        <h2 id="offline-hotel-search">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>Problem 1: Offline-First Hotel Search</span>
+            <span class="topic-tag">Offline-First</span>
+        </h2>
+        <div class="topic-body">
+            <p><strong>Clarifying Questions:</strong></p>
+            <ul>
+                <li>Should cached search results be filterable while offline? (Yes, support basic text/price filtering).</li>
+                <li>How fresh should the cache be? (Invalidate or warn if cache is older than 30 minutes).</li>
+            </ul>
+            
+            <p><strong>Functional Requirements:</strong></p>
+            <ul>
+                <li>Display cached hotel listings immediately upon opening the search screen.</li>
+                <li>Fetch fresh listings in the background and update the UI gracefully.</li>
+                <li>Allow users to view details of cached hotels while offline.</li>
+            </ul>
+
+            <p><strong>Non-Functional Requirements:</strong></p>
+            <ul>
+                <li>UI rendering must be responsive, avoiding frame drops during cache updates.</li>
+                <li>Optimize database writes to minimize battery impact.</li>
+            </ul>
+
+            <p><strong>Component Diagram:</strong></p>
+            <pre class="component-diagram">
++------------------+     Queries     +--------------------+
+|    Search UI     | &lt;------------&gt;  |  HotelRepository   |
++------------------+                 +--------------------+
+                                               |
+                       +-----------------------+-----------------------+
+                       |                                               |
+                       v                                               v
+            +--------------------+                           +--------------------+
+            | Room Database (DB) |                           | Retrofit API Client|
+            +--------------------+                           +--------------------+
+            </pre>
+
+            <p><strong>Data Flow Walkthrough:</strong></p>
+            <ol>
+                <li>The Search UI subscribes to the <code>HotelRepository</code> data stream (a Flow of lists of hotels).</li>
+                <li>The repository fetches cached data from the Room database, emitting it immediately to update the UI.</li>
+                <li>At the same time, the repository triggers a network request via Retrofit to fetch fresh listings.</li>
+                <li>When the network request succeeds, the repository writes the new data to Room, which automatically triggers a new emission to update the UI.</li>
+            </ol>
+
+            <p><strong>Key Technology Choices:</strong></p>
+            <ul>
+                <li><strong>Room Database:</strong> Serves as the single source of truth, supporting reactive queries via Coroutine Flows.</li>
+                <li><strong>Retrofit:</strong> Standard library for network requests, integrating with Coroutine suspending calls.</li>
+            </ul>
+
+            <p><strong>Trade-offs:</strong></p>
+            <ul>
+                <li><strong>UI Flickering:</strong> Updating the database immediately after a network request can cause the UI to flicker. Mitigated by using diffing utilities (like <code>DiffUtil</code>) in the UI adapters.</li>
+            </ul>
+
+            <p><strong>Failure Handling:</strong></p>
+            <ul>
+                <li>If the network request fails, show a snackbar warning that the UI is displaying offline cached data.</li>
+            </ul>
+
+            <p><strong>Testing Strategy:</strong></p>
+            <ul>
+                <li>Use in-memory Room databases for repository integration tests to verify cache-then-network emission sequences.</li>
+            </ul>
+
+            <p><strong>Expedia-Relevance Note:</strong></p>
+            <p class="alert-note">
+                Travelers often search for hotels while in transit or with weak airport Wi-Fi. An offline-first search ensures they can access pricing and booking details reliably under poor network conditions.
+            </p>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How do you structure a repository to emit cached data first, fetch fresh data, and handle network errors?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Return a <code>Flow</code> that emits cached values from the local database immediately. Launch a background task to fetch fresh data via the API, write it to the database on success, and handle network errors gracefully by emitting an error state or showing a warning indicator in the UI.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do you handle conflict resolution when background sync conflicts with user modifications?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Emitting network results directly to the UI without writing them to the database first, violating the single source of truth principle.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- PROBLEM 2 -->
+    <article class="topic-card">
+        <h2 id="realtime-prices">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>Problem 2: Real-Time Price Updates</span>
+            <span class="topic-tag">Real-Time</span>
+        </h2>
+        <div class="topic-body">
+            <p><strong>Clarifying Questions:</strong></p>
+            <ul>
+                <li>How frequently do prices change? (Prices update every few seconds during active booking sessions).</li>
+                <li>What is the background behavior requirement? (Disconnect connection when the app goes to the background to save battery).</li>
+            </ul>
+            
+            <p><strong>Functional Requirements:</strong></p>
+            <ul>
+                <li>Update hotel prices in real-time on the details screen.</li>
+                <li>Display a visual indicator (such as a green flash) when a price changes.</li>
+            </ul>
+
+            <p><strong>Non-Functional Requirements:</strong></p>
+            <ul>
+                <li>Minimize battery usage and data consumption when the app is in the background.</li>
+                <li>Establish connection within 1 second of entering the screen.</li>
+            </ul>
+
+            <p><strong>Component Diagram:</strong></p>
+            <pre class="component-diagram">
++------------------+                 +--------------------+
+|    Details UI    |                 |   PriceRepository  |
++------------------+                 +--------------------+
+        ^                                      ^
+        | State Flow                           |
++------------------+      Updates      +--------------------+
+|    ViewModel     | &lt;---------------- | WebSocket Manager  |
++------------------+                   +--------------------+
+            </pre>
+
+            <p><strong>Data Flow Walkthrough:</strong></p>
+            <ol>
+                <li>The Details UI opens, subscribing to the ViewModel's price state flow.</li>
+                <li>The ViewModel requests price updates from the repository, which opens a WebSocket connection.</li>
+                <li>The server broadcasts price updates over the WebSocket channel.</li>
+                <li>The repository receives updates, parses the payloads, and updates the ViewModel state to refresh the UI.</li>
+            </ol>
+
+            <p><strong>Key Technology Choices:</strong></p>
+            <ul>
+                <li><strong>WebSockets (OkHttp):</strong> Provides a persistent, low-overhead bi-directional communication channel for frequent updates.</li>
+                <li><strong>Server-Sent Events (SSE):</strong> Alternative for unidirectional server-to-client updates. We choose WebSockets because it is widely supported and allows for client-side heartbeat signals.</li>
+            </ul>
+
+            <p><strong>Trade-offs:</strong></p>
+            <ul>
+                <li><strong>Connection Overhead:</strong> Maintaining persistent WebSocket connections uses more battery than simple HTTP polling, but is more efficient than rapid polling when prices change frequently.</li>
+            </ul>
+
+            <p><strong>Failure Handling:</strong></p>
+            <ul>
+                <li>Implement an exponential backoff reconnection strategy. If the connection fails, fall back to occasional HTTP polling to ensure the user still sees updated prices.</li>
+            </ul>
+
+            <p><strong>Testing Strategy:</strong></p>
+            <ul>
+                <li>Use mock WebSocket servers to test connection lifecycles, reconnection logic, and behavior during network drops.</li>
+            </ul>
+
+            <p><strong>Expedia-Relevance Note:</strong></p>
+            <p class="alert-note">
+                Flight and hotel prices fluctuate frequently during booking. Real-time price updates prevent users from encountering price mismatches at checkout, increasing booking success rates.
+            </p>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Design a reconnection strategy for a WebSocket connection on a price tracking screen.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Use an exponential backoff strategy (e.g. retry after 1s, 2s, 4s, up to 32s). Monitor network connectivity changes using <code>ConnectivityManager</code> to trigger an immediate reconnection attempt when the device goes back online.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do you handle stale pricing data in the UI if the connection drops?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Keeping the WebSocket connection active when the app is in the background, violating battery optimization guidelines.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- PROBLEM 3 -->
+    <article class="topic-card">
+        <h2 id="pagination-caching">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>Problem 3: Pagination with Database Caching</span>
+            <span class="topic-tag">Pagination</span>
+        </h2>
+        <div class="topic-body">
+            <p><strong>Clarifying Questions:</strong></p>
+            <ul>
+                <li>Should search filter adjustments reset the pagination state? (Yes, new searches should invalidate the current pagination state).</li>
+                <li>How is end-of-list reached? (The API returns a null token or empty page).</li>
+            </ul>
+            
+            <p><strong>Functional Requirements:</strong></p>
+            <ul>
+                <li>Support smooth scrolling through large lists of hotels.</li>
+                <li>Cache pages in a local database so users can scroll through loaded pages offline.</li>
+                <li>Display loading indicators at the end of the list during page fetches.</li>
+            </ul>
+
+            <p><strong>Non-Functional Requirements:</strong></p>
+            <ul>
+                <li>Prevent duplicate network requests for the same page.</li>
+                <li>Scroll smoothly at 60fps.</li>
+            </ul>
+
+            <p><strong>Component Diagram:</strong></p>
+            <pre class="component-diagram">
++------------------+                   +--------------------+
+|  RecyclerView UI |                   |      PagingData    |
++------------------+                   +--------------------+
+                                                 ^
++------------------+  RemoteMediator   +--------------------+
+|   Room Cache     | &lt;---------------- |    Pager Config    |
++------------------+                   +--------------------+
+                                                 | API Call
+                                       +--------------------+
+                                       | Retrofit Service   |
+                                       +--------------------+
+            </pre>
+
+            <p><strong>Data Flow Walkthrough:</strong></p>
+            <ol>
+                <li>The Paging library's <code>Pager</code> coordinates data loading using a <code>RemoteMediator</code>.</li>
+                <li>When the database runs out of cached items, <code>RemoteMediator</code> fetches the next page from the network API.</li>
+                <li>The fetched page data is written to the Room database.</li>
+                <li>The database update triggers an emission to refresh the UI list.</li>
+            </ol>
+
+            <p><strong>Key Technology Choices:</strong></p>
+            <ul>
+                <li><strong>Jetpack Paging 3:</strong> Coordinates data requests, handles caching, and simplifies page loading states.</li>
+                <li><strong>Room + RemoteMediator:</strong> Implements a local database cache boundary for the Paging library.</li>
+            </ul>
+
+            <p><strong>Trade-offs:</strong></p>
+            <ul>
+                <li><strong>Complexity:</strong> Setting up Paging 3 with Room is more complex than simple offset paging, but provides smoother scrolling and offline support.</li>
+            </ul>
+
+            <p><strong>Failure Handling:</strong></p>
+            <ul>
+                <li>If a page fetch fails, show a retry button at the end of the list, allowing the user to retry the request without losing their current scroll position.</li>
+            </ul>
+
+            <p><strong>Testing Strategy:</strong></p>
+            <ul>
+                <li>Write integration tests for the <code>RemoteMediator</code> to verify that page tokens are parsed correctly and saved to the database.</li>
+            </ul>
+
+            <p><strong>Expedia-Relevance Note:</strong></p>
+            <p class="alert-note">
+                Expedia hotel search results can return hundreds of listings. Efficient pagination reduces memory usage on mobile devices and limits server load.
+            </p>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain the role of RemoteMediator in Paging 3 and how it differs from a PagingSource.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>PagingSource</code> loads data directly from a single source (either network or database) for the UI. <code>RemoteMediator</code> acts as a boundary callback. When the database runs out of cached items, it fetches the next page from the network and saves it to the database, which then updates the UI.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do you manage pagination keys in Room to prevent out-of-order page inserts?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using raw offset/limit pagination for dynamic search results. This can cause duplicate items to appear in the list if items are added or reordered during search.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- PROBLEM 4 -->
+    <article class="topic-card">
+        <h2 id="analytics-pipeline">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>Problem 4: Analytics Event Pipeline</span>
+            <span class="topic-tag">Pipeline</span>
+        </h2>
+        <div class="topic-body">
+            <p><strong>Clarifying Questions:</strong></p>
+            <ul>
+                <li>What is the batching threshold? (Upload events in batches of 10, or every 30 seconds).</li>
+                <li>How are critical events handled? (Mark events with priority levels; critical events are uploaded immediately).</li>
+            </ul>
+            
+            <p><strong>Functional Requirements:</strong></p>
+            <ul>
+                <li>Queue user interaction events (clicks, impressions) in a local cache.</li>
+                <li>Upload events in batches to minimize network connection overhead.</li>
+                <li>Retry failed uploads using an exponential backoff policy.</li>
+            </ul>
+
+            <p><strong>Non-Functional Requirements:</strong></p>
+            <ul>
+                <li>Guaranteed delivery for high-priority event types.</li>
+                <li>Limit local cache size to prevent the app from consuming excessive storage.</li>
+            </ul>
+
+            <p><strong>Component Diagram:</strong></p>
+            <pre class="component-diagram">
++------------------+                   +--------------------+
+|    Tracker UI    | ----------------&gt; |  AnalyticsManager  |
++------------------+                   +--------------------+
+                                                 |
+                                       +--------------------+
+                                       | Room Event Queue   |
+                                       +--------------------+
+                                                 |
+                                       +--------------------+
+                                       | WorkManager Upload |
+                                       +--------------------+
+            </pre>
+
+            <p><strong>Data Flow Walkthrough:</strong></p>
+            <ol>
+                <li>The UI calls <code>AnalyticsManager</code> to log user events.</li>
+                <li>The manager writes the events immediately to a Room database event queue.</li>
+                <li>A background task is scheduled via <code>WorkManager</code> to process and upload the event queue.</li>
+                <li>When the queue reaches the batch threshold or time limit, the worker uploads the events to the server and deletes them from the local database on success.</li>
+            </ol>
+
+            <p><strong>Key Technology Choices:</strong></p>
+            <ul>
+                <li><strong>Room Database:</strong> Replaces fragile in-memory arrays to prevent data loss if the app crashes before events are uploaded.</li>
+                <li><strong>WorkManager:</strong> Handles uploading events in the background, managing retries and network constraints automatically.</li>
+            </ul>
+
+            <p><strong>Trade-offs:</strong></p>
+            <ul>
+                <li><strong>Real-time Latency vs Battery Life:</strong> Batching events saves battery but delays delivery. We mitigate this by supporting immediate uploads for high-priority events.</li>
+            </ul>
+
+            <p><strong>Failure Handling:</strong></p>
+            <ul>
+                <li>If the upload fails, retry using WorkManager's backoff policy. If the database exceeds its maximum size limit (e.g. 50MB), drop the oldest low-priority events to prevent storage issues.</li>
+            </ul>
+
+            <p><strong>Testing Strategy:</strong></p>
+            <ul>
+                <li>Write unit tests to verify batch splitting, priority filtering, and database pruning logic.</li>
+            </ul>
+
+            <p><strong>Expedia-Relevance Note:</strong></p>
+            <p class="alert-note">
+                Expedia uses analytics data to optimize booking funnels. A reliable event pipeline ensures business metrics are captured accurately, even under spotty network conditions.
+            </p>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Design a crash-resilient analytics upload pipeline that limits network calls.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Write events to a local Room database queue first. Use <code>WorkManager</code> to batch upload events when the device is connected to Wi-Fi or charging, retrying failed uploads using an exponential backoff policy to save battery.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">Under what conditions would you drop events instead of retrying them indefinitely?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Storing queued events in an in-memory list, causing events to be lost if the app crashes or is killed by the system.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

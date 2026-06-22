@@ -1,0 +1,62 @@
+<div class="section-content">
+    <h1>60Q Practice Question Bank</h1>
+    <p class="section-intro">
+        Interactive practice questions covering Expedia SDE-2 expectation areas. Use the filters below to practice specific domains and difficulty levels.
+    </p>
+
+    <div class="questions-layout">
+        <!-- Filter Control Bar -->
+        <div class="questions-filter-bar">
+            <!-- Search bar specifically for questions -->
+            <div class="filter-row">
+                <label class="filter-label" for="question-search">Text Search</label>
+                <div class="search-container" style="flex: 1; max-width: 100%;">
+                    <input type="text" id="question-search" placeholder="Search questions, answers, concepts..." aria-label="Search question bank">
+                </div>
+            </div>
+
+            <!-- Round Filter -->
+            <div class="filter-row round-filter">
+                <span class="filter-label">Interview Round</span>
+                <div class="chip-group">
+                    <button class="filter-chip active" data-round="all">All Rounds</button>
+                    <button class="filter-chip" data-round="R1">Round 1 (Internals)</button>
+                    <button class="filter-chip" data-round="R2">Round 2 (Architecture/Coding)</button>
+                </div>
+            </div>
+
+            <!-- Category Filter Chips -->
+            <div class="filter-row">
+                <span class="filter-label">Category</span>
+                <div class="chip-group">
+                    <button class="filter-chip active" data-category="all">All Categories</button>
+                    <button class="filter-chip" data-category="Kotlin">Kotlin</button>
+                    <button class="filter-chip" data-category="Android-Internals">Android Internals</button>
+                    <button class="filter-chip" data-category="Coroutines">Coroutines</button>
+                    <button class="filter-chip" data-category="Reactive">Reactive</button>
+                    <button class="filter-chip" data-category="Solution-Design">Solution Design</button>
+                    <button class="filter-chip" data-category="Live-Coding">Live Coding</button>
+                    <button class="filter-chip" data-category="Testing">Testing</button>
+                    <button class="filter-chip" data-category="Clean-Code">Clean Code</button>
+                </div>
+            </div>
+
+            <!-- Difficulty Toggle -->
+            <div class="filter-row">
+                <span class="filter-label">Difficulty</span>
+                <div class="difficulty-toggle">
+                    <button class="diff-btn active" data-diff="all">All Levels</button>
+                    <button class="diff-btn" data-diff="mid">Mid SDE-2</button>
+                    <button class="diff-btn" data-diff="senior">Senior SDE-2</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Render Target Grid -->
+        <div class="questions-grid" id="questions-grid">
+            <div class="no-results">
+                <p>Loading questions database...</p>
+            </div>
+        </div>
+    </div>
+</div>

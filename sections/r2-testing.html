@@ -1,0 +1,230 @@
+<div class="section-content">
+    <h1>Code Testability & Testing Guidelines</h1>
+    <div class="section-meta">
+        <span>⏱ 12 min read</span>
+        <span>✓ Round 2 Core</span>
+    </div>
+
+    <p class="section-intro">
+        Best practices for testing mobile applications, focusing on state transitions, test double design, concurrent test environments, and database cache validation.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="viewmodel-testing">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. ViewModel Testing: States vs Implementations</span>
+            <span class="topic-tag">ViewModel</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                When testing ViewModels, focus on verifying **state transitions** and **outputs**, rather than private implementation details. This ensures tests remain valid even if the internal implementation is refactored.
+            </p>
+            <p>
+                <strong>Test Design:</strong> Instead of verifying that a specific repository method was called (which is an implementation detail), verify that triggering an intent transitions the UI state correctly (e.g. from <code>Loading</code> to <code>Success</code> or <code>Error</code>).
+            </p>
+            <pre><code class="language-kotlin">// CORRECT: Testing state transitions
+@Test
+fun testLoadingStateTransitions() = runTest {
+    viewModel.processIntent(HotelIntent.LoadHotels)
+    
+    // Assert State Flow transitions through Loading to Success
+    viewModel.uiState.test {
+        assertEquals(HotelUiState(isLoading = true), awaitItem())
+        assertEquals(HotelUiState(hotels = expectedList), awaitItem())
+    }
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What should you verify when writing unit tests for a ViewModel?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Focus on verifying state transitions and output emissions (such as state flow updates or navigation events). Avoid verification of internal method calls or private fields, as this couples tests to the implementation and makes refactoring difficult.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do you mock or fake saved state handles during ViewModel unit testing?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Asserting calls to internal ViewModel methods instead of verifying changes in the exposed public state flows.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="fake-vs-mock">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. Fake vs Mock Trade-offs</span>
+            <span class="topic-tag">Methodology</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Understand the trade-offs between different categories of test doubles:
+            </p>
+            <ul>
+                <li><strong>Fakes:</strong> Working implementations of a component with simplified behavior (e.g., an in-memory repository). They are resilient to internal interface changes and simulate real system behavior, making tests more reliable.</li>
+                <li><strong>Mocks:</strong> Objects configured with pre-programmed expectations (e.g., MockK setups). While quick to configure, mocks couple tests to the component's internal calls, requiring test updates whenever the code is refactored.</li>
+            </ul>
+            <pre><code class="language-kotlin">// A Fake Repository is a simple class rather than a MockK setup
+class FakeHotelRepository : HotelRepository {
+    private val list = mutableListOf<String>()
+    
+    override suspend fun fetchHotels() = list
+    fun addHotels(items: List<String>) { list.addAll(items) }
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain why fakes are often preferred over mocks for repository and service test dependencies.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Fakes provide a simplified, self-contained implementation (such as an in-memory cache) that behaves consistently across tests. This makes tests more resilient to refactoring, as they do not depend on the exact method invocation patterns required by mocks.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">Under what conditions are mocks more appropriate than fakes?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Over-mocking simple models and utilities (like data classes or logger wrappers), which adds configuration overhead and slows down test execution.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="coroutine-testing">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. Coroutine and Flow Testing (runTest, Turbine)</span>
+            <span class="topic-tag">Concurrency</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Testing concurrent coroutines requires using <code>runTest</code> to skip delays and control execution flow via a test scheduler.
+            </p>
+            <p>
+                Use the **Turbine** library to test flow emissions. It captures emissions and lets you assert values sequentially, avoiding the need to collect flows manually or manage test scopes inside tests.
+            </p>
+            <pre><code class="language-kotlin">@Test
+fun testPriceUpdatesFlow() = runTest {
+    val priceFlow = repository.observePrices()
+    
+    // Turbine test wrapper
+    priceFlow.test {
+        assertEquals(100, awaitItem())
+        repository.updatePrice(120)
+        assertEquals(120, awaitItem())
+        cancelAndConsumeRemainingEvents()
+    }
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain how runTest manages virtual time delays during testing.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>runTest</code> uses a <code>TestCoroutineScheduler</code> to intercept delays (such as <code>delay(1000)</code>) and advance virtual time instantly, allowing time-dependent tests to complete immediately without blocking the test runner.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do you handle tests where a coroutine dispatcher (like Dispatchers.IO) is hardcoded inside a repository?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using a standard <code>runBlocking</code> for coroutines that contain delays. This causes the test suite to block and slow down, rather than executing instantly with virtual time.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="repo-testing">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. Repository Testing: In-Memory Room vs Fake</span>
+            <span class="topic-tag">Database</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                When testing data repositories, choose between an in-memory database and fakes based on the requirements:
+            </p>
+            <ul>
+                <li><strong>In-Memory Room Database:</strong> Runs on a local SQLite instance in memory. This is slower to execute but validates queries, database triggers, and schema migrations against real SQLite constraints.</li>
+                <li><strong>Fake Data Source:</strong> A simple implementation (such as a map-backed cache). It is faster to execute but does not validate SQL syntax or foreign key constraints.</li>
+            </ul>
+            <pre><code class="language-kotlin">// Room in-memory builder instance
+val db = Room.inMemoryDatabaseBuilder(
+    ApplicationProvider.getApplicationContext(),
+    HotelDatabase::class.java
+).allowMainThreadQueries().build() // Allowed only for local unit tests</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What are the trade-offs of using an in-memory Room database versus a fake for repository testing?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">An in-memory Room database validates SQL queries, constraint checks, and database schemas, but is slower to initialize and execute. A fake data source is faster to execute but does not validate SQL queries or schema definitions, which can hide database-related bugs.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do you close the in-memory database instance to prevent memory leaks between test runs?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Sharing a single in-memory database instance across multiple tests, causing database locks and test pollution.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="code-testability">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. Designing for Code Testability</span>
+            <span class="topic-tag">Architecture</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Code testability is an architectural requirement. To ensure components can be isolated and tested effectively:
+            </p>
+            <ul>
+                <li><strong>Constructor Injection:</strong> Avoid initializing dependencies inside classes. Pass dependencies (such as APIs or repositories) as constructor arguments to allow them to be mocked or faked during tests.</li>
+                <li><strong>Avoid Static Singletons:</strong> Do not access global singletons or static instances directly. Accessing static singletons introduces hidden dependencies and side effects, making it difficult to isolate components for testing.</li>
+                <li><strong>Avoid Hardcoded Dispatchers:</strong> Do not use hardcoded dispatchers (e.g. <code>Dispatchers.IO</code>) inside classes. Instead, pass dispatchers as constructor parameters to allow them to be overridden with a <code>TestDispatcher</code> during tests.</li>
+            </ul>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What are the key architectural changes needed to make a legacy class testable?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Use constructor injection to pass dependencies instead of initializing them inside the class. Avoid accessing static singletons directly, and inject coroutine dispatchers as constructor parameters so they can be overridden with a <code>TestDispatcher</code> during tests.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do DI frameworks (like Hilt or Dagger) simplify testing with custom test doubles?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Hardcoding coroutine dispatchers directly in helper methods, preventing test runners from controlling execution flow using virtual time.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

@@ -1,0 +1,389 @@
+<div class="section-content">
+    <h1>Reactive Programming</h1>
+    <div class="section-meta">
+        <span>⏱ 12 min read</span>
+        <span>✓ Round 1 Optional / Core</span>
+    </div>
+
+    <p class="section-intro">
+        Architectural comparisons of reactive paradigms, stream contracts, backpressure mitigation strategies, and state-driven event communication models.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="flow-vs-livedata">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. Flow vs LiveData Comparison</span>
+            <span class="topic-tag">Comparison</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Compare the design, lifecycle behavior, and features of LiveData and Kotlin Flow:
+            </p>
+            <div class="comparison-table-wrapper">
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Feature</th>
+                            <th>LiveData</th>
+                            <th>Kotlin Flow</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="comparison-feature">Lifecycle Awareness</td>
+                            <td>Yes (bound to Android Lifecycle)</td>
+                            <td>No (requires lifecycle-aware collection helpers)</td>
+                        </tr>
+                        <tr>
+                            <td class="comparison-feature">Backpressure Support</td>
+                            <td>No (value is overwritten immediately)</td>
+                            <td>Yes (supported via buffer and conflate operators)</td>
+                        </tr>
+                        <tr>
+                            <td class="comparison-feature">Threading Model</td>
+                            <td>Main thread bound for observers</td>
+                            <td>Flexible (configured via dispatchers using flowOn)</td>
+                        </tr>
+                        <tr>
+                            <td class="comparison-feature">Operators</td>
+                            <td>Limited (Transformations.map/switchMap)</td>
+                            <td>Extensive (standard functional operators)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Compare LiveData and StateFlow in terms of thread execution models and backpressure handling.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>LiveData</code> is bound to the main thread; updates posted from background threads are dispatched to the main thread. It does not support backpressure, so rapid updates overwrite previous values. <code>StateFlow</code> is built on coroutines, allowing you to configure the execution thread using dispatchers. It handles backpressure by suspending the emitter or using buffering/conflation strategies.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does <code>repeatOnLifecycle</code> prevent background resource waste when collecting Flows in Android UI components?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Collecting Flows in an Activity using <code>lifecycleScope.launch</code> instead of <code>repeatOnLifecycle</code>, leaving the stream active in the background when the app is stopped.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="flow-vs-rxjava">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. Flow vs RxJava Comparison & Migration</span>
+            <span class="topic-tag">Comparison</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Compare Kotlin Flow and RxJava:
+            </p>
+            <div class="comparison-table-wrapper">
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Metric</th>
+                            <th>RxJava</th>
+                            <th>Kotlin Flow</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td class="comparison-feature">Cold Stream Type</td>
+                            <td>Observable, Flowable</td>
+                            <td>Flow</td>
+                        </tr>
+                        <tr>
+                            <td class="comparison-feature">Threading operator</td>
+                            <td>subscribeOn, observeOn</td>
+                            <td>flowOn (applies only upstream)</td>
+                        </tr>
+                        <tr>
+                            <td class="comparison-feature">Backpressure</td>
+                            <td>Flowable (buffer, drop, latest)</td>
+                            <td>Built into suspending functions natively</td>
+                        </tr>
+                        <tr>
+                            <td class="comparison-feature">API footprint</td>
+                            <td>Large (hundreds of operator methods)</td>
+                            <td>Small (uses standard extension functions)</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">What is the threading model difference between RxJava's subscribeOn/observeOn and Flow's flowOn?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">In RxJava, <code>subscribeOn</code> configures execution for the entire chain, while <code>observeOn</code> overrides threading for downstream operators. In Kotlin Flow, the <code>flowOn</code> operator changes the dispatcher for *upstream* operators only. The collector runs on the dispatcher of the calling scope.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do you bridge RxJava Observables to Kotlin Flows in a legacy codebase?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Assuming that placing <code>flowOn</code> at the end of a Flow chain configures the collection thread (it only configures upstream operators).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="livedata-legacy">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. When to Still Use LiveData</span>
+            <span class="topic-tag">Legacy</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                While Flow is preferred for new code, LiveData is still useful in specific scenarios:
+            </p>
+            <ul>
+                <li><strong>Legacy XML Data Binding:</strong> XML layout bindings support LiveData natively, updating views automatically.</li>
+                <li><strong>Simple UI State:</strong> For simple screens without complex transformations or concurrency, LiveData provides a simple, main-thread-safe API.</li>
+                <li><strong>Java Interoperability:</strong> If parts of your application are still written in Java, LiveData is easier to observe than Kotlin coroutine flows.</li>
+            </ul>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">In which scenarios is LiveData still acceptable in modern Android architecture?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">LiveData is still useful when integration with legacy XML Data Binding is required, or when interoperating with Java code. For simple UI states that require main-thread safety without complex transformations, LiveData remains a viable option.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does <code>liveData {}</code> coroutine builder bridge asynchronous coroutine code with LiveData consumers?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using LiveData in the data or domain layers of an application, which couples business logic to the Android platform libraries.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="cold-vs-hot">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. Cold vs Hot Streams</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Understand the differences between stream categories:
+            </p>
+            <ul>
+                <li><strong>Cold Streams:</strong> The producer block starts executing only when a collector subscribes (e.g. <code>flow { emit(1) }</code>). Each subscriber triggers an independent execution of the stream.</li>
+                <li><strong>Hot Streams:</strong> The stream executes independent of subscribers (e.g. <code>StateFlow</code>, <code>SharedFlow</code>). Values are broadcast to all active subscribers, and new subscribers receive either the latest value (for StateFlow) or the buffered replay window.</li>
+            </ul>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Define hot and cold streams and provide an example of each in Android.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Cold streams (such as standard <code>flow { ... }</code> or Room query streams) run their producer blocks on-demand for each subscriber. Hot streams (such as <code>StateFlow</code> or <code>SharedFlow</code>) broadcast values to all active collectors from an active execution source, remaining independent of subscriber lifecycles.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does a hot stream handle resource cleanup when there are no active collectors?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Assuming that database queries wrapped in a standard cold Flow run once and share results among multiple collectors.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="backpressure">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. Backpressure Mitigation (Buffer, Conflate)</span>
+            <span class="topic-tag">Execution</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Backpressure occurs when a producer emits values faster than the consumer can process them.
+            </p>
+            <p>
+                <strong>Mitigation:</strong>
+            </p>
+            <ul>
+                <li><strong>Suspension:</strong> By default, a Flow suspends the producer coroutine when the collector is busy, matching the emission rate to the consumption rate.</li>
+                <li><strong>Buffer:</strong> Queues emitted values in a buffer, allowing the producer to continue executing while the collector catches up.</li>
+                <li><strong>Conflate:</strong> Skips intermediate values, delivering only the latest value to the collector when it is ready.</li>
+            </ul>
+            <pre><code class="language-kotlin">val searchFlow = rawQueryFlow
+    .conflate() // Skips intermediate queries if processing search results is slow
+    .collect { query ->
+        updateSearchUI(query)
+    }</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">How does Flow handle backpressure, and what is the difference between buffer() and conflate()?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Flow uses coroutine suspension by default to pause emission until the collector is ready. <code>buffer()</code> queues values in a buffer so the producer can emit without suspending immediately. <code>conflate()</code> drops intermediate values, ensuring the collector only receives the latest value when it is ready.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What happens when a buffer overflows under the <code>BufferOverflow.DROP_OLDEST</code> policy?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using a large buffer size for real-time events, which can cause high memory usage and delay processing of the latest events.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 6 -->
+    <article class="topic-card">
+        <h2 id="state-vs-event">
+            <input type="checkbox" class="topic-chk" data-topic="6">
+            <span>6. State vs Event Containers: MutableStateFlow vs MutableSharedFlow</span>
+            <span class="topic-tag">Architecture</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Architectures must separate persistent state from transient events:
+            </p>
+            <ul>
+                <li><strong>MutableStateFlow (State Container):</strong> Tracks the current state of the UI (e.g. loading, success, or error states). It retains the latest value and replays it to new subscribers, surviving configuration changes.</li>
+                <li><strong>MutableSharedFlow (Event Channel):</strong> Broadcasts transient actions (e.g. navigation triggers, snackbar messages, or error dialogs). It does not retain state, ensuring events are processed only once by active listeners.</li>
+            </ul>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Why should you avoid using MutableStateFlow to dispatch one-time UI events?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>MutableStateFlow</code> retains its state. When a new collector subscribes (e.g., during screen rotation), it replays the last emitted state. If that state represents a one-time event (like navigation or a dialog), it will be re-triggered, causing duplicate actions. Use <code>MutableSharedFlow</code> or state-driven events instead.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How do you configure MutableSharedFlow to emulate a single-live-event channel?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Setting <code>replay = 1</code> on a SharedFlow that handles navigation events, which causes duplicate navigation triggers on rotation.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 7 -->
+    <article class="topic-card">
+        <h2 id="channel-discouraged">
+            <input type="checkbox" class="topic-chk" data-topic="7">
+            <span>7. Why Channel is not Recommended for UI Events</span>
+            <span class="topic-tag">Architecture</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                While <code>Channel</code> supports point-to-point communication, it is no longer recommended for UI events:
+            </p>
+            <ul>
+                <li><strong>Single Consumer Limit:</strong> Channels are designed for single-consumer queues. If multiple collectors subscribe, events are distributed among them randomly rather than broadcast to all.</li>
+                <li><strong>Buffer Loss:</strong> If no collectors are active (e.g., during configuration changes), sent events are buffered. When the view reconnects, these events can be lost or delivered in an incorrect state.</li>
+                <li><strong>Lifecycle Management:</strong> Channels do not integrate with lifecycle-aware flow collection, making it difficult to pause and resume emissions safely.</li>
+            </ul>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Explain why Channel is discouraged for managing UI events in modern Android architectures.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Channels are designed for single-consumer queues. If a screen has multiple observers, events are split between them. Additionally, managing buffer state during lifecycle transitions is difficult, which can lead to lost events or memory leaks. <code>MutableSharedFlow</code> is preferred for broadcasting events.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">What is the difference between a rendezvous channel and a conflated channel?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Using a <code>Channel</code> to dispatch events to both an Activity and a Fragment, resulting in events being delivered to only one of them.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 8 -->
+    <article class="topic-card">
+        <h2 id="once-only-event">
+            <input type="checkbox" class="topic-chk" data-topic="8">
+            <span>8. Once-Only Event Problem: EventWrapper vs CurrentScreen</span>
+            <span class="topic-tag">Architecture</span>
+        </h2>
+        <div class="topic-body">
+            <p>
+                Handling one-time events (like navigation or alerts) requires careful state design:
+            </p>
+            <ul>
+                <li><strong>EventWrapper Anti-Pattern:</strong> Wraps events in an object that tracks whether the content has been handled (e.g. <code>getContentIfNotHandled()</code>). This approach is discouraged because it introduces mutable state inside UI event models and couples state modeling to consumer consumption flags.</li>
+                <li><strong>CurrentScreen (State-driven) Approach:</strong> Models navigation explicitly as a state property (e.g., a nullable <code>destination</code> field inside the screen state). When the navigation is executed, the UI sends an intent back to the ViewModel to reset the destination property to null, ensuring the event is processed only once.</li>
+            </ul>
+            <pre><code class="language-kotlin">// State-driven approach
+data class SearchUiState(
+    val hotels: List<Hotel> = emptyList(),
+    val navigationDestination: Hotel? = null // Destination is part of the state
+)
+
+// UI Collection
+viewModel.uiState.collect { state ->
+    state.navigationDestination?.let { hotel ->
+        navigator.navigateToDetails(hotel)
+        viewModel.onNavigationHandled() // Reset destination to null in state
+    }
+}</code></pre>
+            
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Interview Question</div>
+                    <div class="qa-text">Why is the EventWrapper pattern considered an anti-pattern, and how does the State-driven approach resolve it?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The <code>EventWrapper</code> pattern introduces mutable state inside immutable state models. The state-driven approach treats the navigation destination as a state property. Once the navigation is executed, the UI triggers an event to clear the destination property in the ViewModel, keeping the state immutable and clean.</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label followup">Senior Follow-Up</div>
+                    <div class="qa-text">How does this state-driven navigation handle complex backstack recovery scenarios?</div>
+                </div>
+                <div class="qa-block">
+                    <div class="qa-label mistake">Common Candidate Mistake</div>
+                    <div class="qa-text">Failing to clear the navigation state property in the ViewModel after executing the navigation, triggering duplicate navigation events on configuration changes.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>
