@@ -1,0 +1,490 @@
+<div class="section-content">
+    <h1>Section 4: Jetpack Compose</h1>
+    <div class="section-meta">
+        <span>⏱ 25 min read</span>
+        <span>✓ Part 1 Core</span>
+    </div>
+    
+    <p class="section-intro">
+        Declarative UI runtime architecture, state tracking, composition lifecycles, recomposition scopes, snapshot system internals, stability rules, and performance rendering optimization.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="composable-functions">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. Composable Functions</span>
+            <span class="topic-tag">Runtime</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>Composable functions are annotated with <code>@Composable</code>. The Compose compiler plugin transforms these functions during compilation, adding an implicit parameter representing the <code>Composer</code> instance and inserting start/end group calls (like <code>composer.startRestartGroup</code>). These groups map UI nodes to a persistent data structure called the Slot Table, representing the composition tree.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>A composable is executed during the initial Composition. It is re-executed (recomposed) when the state it reads changes, or when the arguments passed to it by its parent change.</p>
+            <h3>Performance Impact</h3>
+            <p>Composable functions do not return UI elements; they emit layout descriptions to the Composer. The runtime compares descriptions to minimize actual tree modifications (Layout & Draw phases), ensuring high-speed rendering.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What does the Compose compiler add to @Composable functions during compilation?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The compiler adds an implicit <code>$composer</code> parameter to the function signature and injects calls to <code>$composer.startRestartGroup(...)</code> at the beginning and <code>$composer.endRestartGroup()</code> at the end of the function body. This allows the runtime to track the function's identity, input arguments, and state reads in the Slot Table.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain how the Composer uses the key parameter in <code>startRestartGroup</code> to resolve recomposition targets.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Thinking that Composable functions return views or construct static class hierarchies similar to standard Java objects.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="state">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. State & MutableState</span>
+            <span class="topic-tag">State</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>State&lt;T&gt;</code> is an observable value container integrated with the Compose runtime. Under the hood, it uses the <code>Snapshot</code> system. When a Composable function reads a State's value during execution, the Compose runtime records this read in the active <code>RecomposeScope</code>. When the State is mutated, the runtime marks that scope as dirty, scheduling it for recomposition.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Writing a new value to a <code>MutableState</code> container triggers recomposition of all scopes that read that State's value.</p>
+            <h3>Performance Impact</h3>
+            <p>Reads are optimized through a lock-free snapshot system, minimizing thread overhead. However, mutating state inside high-frequency loops triggers continuous recompositions (recomposition thrashing).</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How does the Compose runtime track state reads?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The Compose runtime utilizes thread-local Snapshot contexts. During the Composition phase, the current <code>RecomposeScope</code> is registered as a listener on the thread. When a <code>State.value</code> getter is invoked, it triggers a read callback that links the State object instance to the active <code>RecomposeScope</code>, saving this dependency in the Slot Table.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain the internal lock-free concurrency model used by the Compose Snapshot system when updating state across threads.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Mutating a standard Kotlin variable and expecting the Composable to update (it must be wrapped in `MutableState` to be tracked).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="remember">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. remember API</span>
+            <span class="topic-tag">State</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>The <code>remember</code> block stores a value in the Slot Table at the current call site. During initial Composition, the block is executed, and its result is written to the table. On subsequent recompositions, the runtime returns the cached value directly instead of re-executing the block, unless the key arguments passed to <code>remember</code> change.</p>
+            <h3>Recomposition Triggers</h3>
+            <p><code>remember</code> itself does not trigger recomposition. It caches values across recompositions. If it caches a <code>MutableState</code>, updates to that state's value will trigger recomposition.</p>
+            <h3>Performance Impact</h3>
+            <p>Prevents expensive recalculations (e.g., parsing dates or formatting text) on every frame render. Forgetting to remember heavy calculations degrades performance.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What is the difference between remembering a value with keys vs without keys?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>remember { calculate() }</code> executes the block once during initial composition and returns the cached value forever (or until the composable leaves the tree). <code>remember(key1) { calculate(key1) }</code> compares the current <code>key1</code> instance with the value stored in the slot table. If they are not equal, the block is re-evaluated, caching and returning the new result.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does the Slot Table store and align keys and values of remember calls during structural tree changes?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Assuming that `remember` preserves state across Activity destruction or process recreation (it only survives recompositions within the active window).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="remember-saveable">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. rememberSaveable API</span>
+            <span class="topic-tag">State</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>rememberSaveable</code> behaves like <code>remember</code>, but also serializes the stored value into Android's <code>Bundle</code> system. It automatically saves values during configuration changes (like rotation) and process recreation, restoring them during re-composition.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Restores values during recreation, which initializes the composable with its previous state, triggering initial rendering with historical values.</p>
+            <h3>Performance Impact</h3>
+            <p>Slight overhead due to serialization/deserialization. Storing massive data structures in <code>rememberSaveable</code> can trigger <code>TransactionTooLargeException</code>.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How does rememberSaveable serialize custom data structures?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">It supports types that can be put inside a <code>Bundle</code> by default. For custom objects, you must provide a custom <code>Saver</code> implementation defining how to convert the object to a saveable format (like list, map, or parcelable) and how to reconstruct it.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does the <code>SaveableStateRegistry</code> coordinate with the Android system lifecycle to persist state?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using <code>rememberSaveable</code> for non-parcelable types without declaring a custom Saver, resulting in runtime crashes during state saving.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="state-hoisting">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. State Hoisting</span>
+            <span class="topic-tag">Design</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>State Hoisting is a pattern of moving state to a composable's caller to make the composable stateless. It replaces internal state updates with parameters: a value parameter (e.g. <code>value: T</code>) and an event callback (e.g. <code>onValueChange: (T) -> Unit</code>).</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Recomposition is triggered when the hoisted state parameter updates at the parent level, propagating down to the stateless child.</p>
+            <h3>Performance Impact</h3>
+            <p>Improves testability, reusability, and stability. However, hoisting state too high up the tree can cause unrelated sibling composables to recompose unless they are configured as skippable.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What are the architectural benefits of State Hoisting in Jetpack Compose?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">State hoisting decoupled UI rendering from state ownership. It creates a single source of truth, makes composables stateless (which makes them easier to preview and test), and guarantees a Unidirectional Data Flow (UDF) where state flows down and events flow up.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain the trade-offs between hoisting state to a parent Composable vs hoisting it to a ViewModel.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Creating duplicate local states in child composables and trying to sync them with hoisted states manually.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 6 -->
+    <article class="topic-card">
+        <h2 id="recomposition">
+            <input type="checkbox" class="topic-chk" data-topic="6">
+            <span>6. Recomposition Phase</span>
+            <span class="topic-tag">Runtime</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>Recomposition is the phase where the Compose runtime re-executes Composable functions that read updated state. The runtime identifies changes in the Slot Table, performs structural updates, and generates a new description tree. It then transitions to the Layout and Draw phases to update the screen.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Triggered by mutations in Compose <code>MutableState</code> read inside the scope, or changes to non-equal parameters passed to child composables.</p>
+            <h3>Performance Impact</h3>
+            <p>Recomposition is designed to be incremental. The compiler targets the smallest possible scope (usually the nearest enclosing Composable block) to avoid re-running the entire screen UI tree.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What is a RecomposeScope and how does it optimize UI updates?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">A <code>RecomposeScope</code> is an executable block representing a section of the composition tree that can be run independently. The runtime maps state read dependencies to these scopes. When a state change occurs, the runtime invalidates only the specific scopes reading that state, re-running only those functions instead of the entire composable hierarchy.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain the internal workings of the <code>Recomposer</code> class and its coordination with the Choreographer VSYNC signals.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Performing side-effects or heavy computations directly in the body of a Composable function, causing them to execute on every recomposition.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 7 -->
+    <article class="topic-card">
+        <h2 id="side-effects">
+            <input type="checkbox" class="topic-chk" data-topic="7">
+            <span>7. Side Effects</span>
+            <span class="topic-tag">Lifecycle</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>A side effect is a change to the state of the app that happens outside the control of a Composable function. Composable functions must be side-effect free. To interact with the outside world safely, Compose provides side-effect APIs that bind operations to the Composable's lifecycle.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Side-effect APIs coordinate with recompositions to ensure actions (like starting an animation or listening to a flow) occur only when appropriate keys change, avoiding redundant triggers.</p>
+            <h3>Performance Impact</h3>
+            <p>Using correct side-effect builders prevents resource leaks (like unclosed sockets or active listeners) and keeps the UI responsive.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why is performing direct side effects in a Composable body dangerous?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Composable functions can run in any order, can be executed concurrently across threads, and can be discarded before completing if a new recomposition is scheduled. Executing side effects directly in the body can lead to duplicate executions, thread safety issues, and memory leaks. Side-effect blocks ensure operations execute in a controlled manner.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does the <code>SideEffect</code> API differ from <code>LaunchedEffect</code> in terms of execution phase?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Triggering analytical network requests directly inside the composable code block instead of wrapping them in a `LaunchedEffect`.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 8 -->
+    <article class="topic-card">
+        <h2 id="launched-effect">
+            <input type="checkbox" class="topic-chk" data-topic="8">
+            <span>8. LaunchedEffect API</span>
+            <span class="topic-tag">Lifecycle</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>LaunchedEffect</code> is a Composable function that runs a suspending block in a coroutine scope managed by the Compose runtime. It starts the coroutine when it enters the Composition, and cancels it when it leaves the Composition. If any of the key parameters change, the current coroutine is cancelled and a new one is launched.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Recomposition does not execute the suspending block again unless one of the keys passed to <code>LaunchedEffect</code> has changed.</p>
+            <h3>Performance Impact</h3>
+            <p>Provides a safe way to perform asynchronous tasks (e.g. fetching network data, triggering animations) that are tied to the UI lifecycle.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What happens to the coroutine launched by LaunchedEffect(key) when the key changes?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The Compose runtime immediately cancels the active coroutine job associated with the effect, executing its cancellation handlers. It then creates a new coroutine using the new key, launching the suspending block under the scope.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does `rememberCoroutineScope()` compare to `LaunchedEffect` for launching coroutines in response to user clicks?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Passing `Unit` as a key for an effect that needs to respond to dynamic parameter changes (the effect will only run once and ignore updates).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 9 -->
+    <article class="topic-card">
+        <h2 id="disposable-effect">
+            <input type="checkbox" class="topic-chk" data-topic="9">
+            <span>9. DisposableEffect API</span>
+            <span class="topic-tag">Lifecycle</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>DisposableEffect</code> is a side-effect API designed for operations that require cleanup when the Composable leaves the Composition or when keys change. The block executes when entering composition, and it must end with an <code>onDispose</code> block containing the cleanup logic.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Executes the cleanup logic and re-runs the setup logic when the passed keys change, preventing resource leaks.</p>
+            <h3>Performance Impact</h3>
+            <p>Crucial for managing listeners, broadcast receivers, and observers. Forgetting to call `onDispose` leaks the registered resources.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Provide an example of when DisposableEffect is mandatory over LaunchedEffect.</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>DisposableEffect</code> is mandatory when registering callbacks or observers that need explicit unregistration (e.g., listening to location updates or system broadcast receivers). <code>LaunchedEffect</code> is for suspending coroutine actions, whereas <code>DisposableEffect</code> is for synchronous setup/cleanup.
+                    <pre><code class="language-kotlin">DisposableEffect(manager) {
+    val listener = LocationListener { ... }
+    manager.register(listener)
+    onDispose {
+        manager.unregister(listener)
+    }
+}</code></pre></div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does the compiler enforce the presence of <code>onDispose</code> inside a DisposableEffect block?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Leaving the <code>onDispose</code> block empty when wrapping a listener, leaking the listener object reference.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 10 -->
+    <article class="topic-card">
+        <h2 id="produce-state">
+            <input type="checkbox" class="topic-chk" data-topic="10">
+            <span>10. produceState API</span>
+            <span class="topic-tag">State</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>produceState</code> converts non-Compose state sources (like cold Flows, RxJava streams, or callback listener streams) into Compose State. It launches a coroutine block that can emit values using <code>value = newValue</code>, automatically cleaning up resources when the producer leaves the composition.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Mutations to the underlying <code>value</code> property inside <code>produceState</code> trigger recompositions for all views reading that state.</p>
+            <h3>Performance Impact</h3>
+            <p>Simplifies state bridge management, ensuring that flow collections and callbacks are cancelled when the UI component is no longer active.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How does produceState simplify Flow observation compared to standard remember and LaunchedEffect?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>produceState</code> wraps the <code>remember { mutableStateOf(initial) }</code> and <code>LaunchedEffect</code> pattern into a single cleaner API. It handles the scope lifecycle, runs the collection coroutine, updates the state value, and manages cancellation automatically under the hood.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Decompile a <code>produceState</code> implementation and explain the returned State wrapper.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Forgetting to clean up listener registrations within the `awaitDispose` block inside `produceState` adapters.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 11 -->
+    <article class="topic-card">
+        <h2 id="derived-state-of">
+            <input type="checkbox" class="topic-chk" data-topic="11">
+            <span>11. derivedStateOf API</span>
+            <span class="topic-tag">State</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>derivedStateOf</code> creates a new State based on calculations derived from other State objects. It buffers updates, recalculating the derived value only when the dependencies change, and emits updates only when the calculated result changes.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Triggers recomposition only when the *result* of the calculation changes, filtering out intermediate state changes (conflating notifications).</p>
+            <h3>Performance Impact</h3>
+            <p>Crucial for high-frequency state updates (e.g. scroll offsets or list index tracking). Without it, reading raw scroll positions directly triggers recomposition on every single pixel scrolled.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">When should you use derivedStateOf vs standard remember(key)?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Use <code>remember(key)</code> when the input key changes infrequently and you want to re-execute a calculation on key change. Use <code>derivedStateOf</code> when the input states change frequently (like scroll positions), but you only want to trigger recomposition when the *result* of the calculation changes (e.g. `scrollOffset > 100`).</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Describe the dependency tracking mechanism of derivedStateOf inside the Compose Snapshot system.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Wrapping a simple state mapping (e.g. transforming `x` to `x + 1`) in `derivedStateOf`, which introduces unnecessary allocation overhead (simple computations should use `remember(x)` instead).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 12 -->
+    <article class="topic-card">
+        <h2 id="snapshot-system">
+            <input type="checkbox" class="topic-chk" data-topic="12">
+            <span>12. Snapshot System</span>
+            <span class="topic-tag">Runtime</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>The Snapshot system is the database engine under Compose state. It tracks values at a specific point in time, allowing isolated reads and writes across threads (Multi-Version Concurrency Control). Changes made in a snapshot are not visible to other threads until the snapshot is committed.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Committing a write transaction in the global snapshot notifies the recomposer, which identifies matching scopes and schedules recomposition.</p>
+            <h3>Performance Impact</h3>
+            <p>Enables parallel composition: Compose can calculate UI trees in parallel on background thread snapshots, merging them to the main thread snapshot on VSYNC.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What is a Snapshot in Compose, and how does it support thread-safe operations?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">A Snapshot represents the state of all Compose State variables at a given time. It uses a copy-on-write model. When a thread takes a snapshot, it reads a consistent state version. Writes occur in a localized frame, and are committed atomically. This isolates the main thread rendering from concurrent background calculations.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">What happens if a conflict occurs when two concurrent snapshots attempt to modify the same state value?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Thinking that Compose state variables are simple volatile variables with standard JVM synchronized locks.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 13 -->
+    <article class="topic-card">
+        <h2 id="navigation-compose">
+            <input type="checkbox" class="topic-chk" data-topic="13">
+            <span>13. Navigation Compose</span>
+            <span class="topic-tag">Architecture</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>Navigation Compose binds navigation graphs to composables. The <code>NavHost</code> reads a <code>NavController</code> backstack. When a navigation action occurs, the controller updates the backstack, triggering the <code>NavHost</code> to recompose and swap the active composables on screen.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Backstack state shifts trigger recomposition, rendering the new active screen destination and destroying old screen composition blocks.</p>
+            <h3>Performance Impact</h3>
+            <p>Avoids fragment transaction overheads. However, passing complex objects as parameters using JSON strings in route arguments introduces serialization delays (typesafe arguments or IDs should be used instead).</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What is the recommended way to pass arguments using Jetpack Navigation Compose?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">You should pass simple arguments (like IDs or strings) using type-safe routes (or URL query syntax in older versions). Avoid passing complex serialized JSON objects over the route. Instead, pass the ID and let the destination screen's ViewModel fetch the full object data from the repository layer.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does Navigation Compose handle ViewModel lifecycles for destinations inside nested graphs?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Passing full domain object models in navigation route paths, causing route parsing failures and memory footprint inflation.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 14 -->
+    <article class="topic-card">
+        <h2 id="performance-optimization">
+            <input type="checkbox" class="topic-chk" data-topic="14">
+            <span>14. Performance Optimization</span>
+            <span class="topic-tag">Performance</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>Compose optimization targets three phases: Composition, Layout, and Draw. Deferring reads is the key optimization technique. Reading state during layout or draw phases instead of the composition phase avoids re-running Composable functions altogether, directly performing only measure/draw passes.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>Minimize recompositions by using lambda versions of modifiers (e.g. <code>Modifier.offset { IntOffset(0, state.value) }</code>) to defer state reads to the layout/draw phase.</p>
+            <h3>Performance Impact</h3>
+            <p>Using lambda-based modifiers reduces CPU load, preventing frame drops (jank) during animations or high-speed scrolls.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why does using Modifier.offset(x, y) cause more jank than Modifier.offset { IntOffset(x, y) } during animations?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>Modifier.offset(x, y)</code> takes raw values. When these values change, the state read occurs during the Composition phase, triggering full recomposition of the Composable and its children. The lambda version <code>Modifier.offset { IntOffset(x, y) }</code> wraps the state read inside a lambda. The read is deferred to the Layout phase, bypasses Composition entirely, and only re-measures/positions the layout node, optimizing performance.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does using <code>ReusableGraphicsLayerScope</code> inside Compose optimize GPU hardware layers?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Evaluating list aggregations (like `.filter` or `.map`) inside the layout body without wrapping them in a `remember` block.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 15 -->
+    <article class="topic-card">
+        <h2 id="compose-stability">
+            <input type="checkbox" class="topic-chk" data-topic="15">
+            <span>15. Compose Stability (Stable and Immutable)</span>
+            <span class="topic-tag">Performance</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>The Compose compiler evaluates every class to determine its stability:
+            <ul>
+                <li><strong>Stable:</strong> Class properties are mutable, but the Compose runtime will be notified when mutations occur (e.g., standard Compose state).</li>
+                <li><strong>Immutable:</strong> Class properties cannot change (e.g., val primitives).</li>
+                <li><strong>Unstable:</strong> Class contains mutable fields that Compose cannot track (e.g. standard JVM collections like <code>List</code>, which can be cast to <code>MutableList</code>).</li>
+            </ul></p>
+            <h3>Recomposition Triggers</h3>
+            <p>If a composable's parameters are all Stable/Immutable, Compose can skip recomposing it if the parameters compare equal. If a parameter is Unstable, Compose *always* recomposes the function, even if the values are identical.</p>
+            <h3>Performance Impact</h3>
+            <p>Unstable models in lists propagate recomposition to all items in the list on any item mutation, degrading scroll performance.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why is a standard java.util.List considered Unstable by the Compose compiler, and how do you fix it?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The compiler cannot guarantee that a <code>List</code> interface will not be backed by a mutable list implementation (like <code>ArrayList</code>). Since it cannot track mutations of standard lists, it marks them as unstable. You can fix this by:
+                    1. Wrapping the model class with the `@Stable` or `@Immutable` annotation.
+                    2. Using Kotlinx Immutable Collections (like <code>PersistentList</code>).
+                    3. Annotating parameter models directly to force compile-time stability.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain how the <code>@Immutable</code> annotation overrides compiler checks, and what bug occurs if you mutate an annotated class.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Assuming all data classes are automatically stable, even if they contain mutable var variables or generic lists.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 16 -->
+    <article class="topic-card">
+        <h2 id="skippability">
+            <input type="checkbox" class="topic-chk" data-topic="16">
+            <span>16. Skippability</span>
+            <span class="topic-tag">Performance</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>Skippability is a compiler optimization. If a Composable's parameters are stable and compare equal to their previous values, the runtime skips executing the function body, returning the cached Slot Table result directly.</p>
+            <h3>Recomposition Triggers</h3>
+            <p>A skippable function is only recomposed if its parameters change (according to structural equality `equals()`) or if it reads a modified internal state.</p>
+            <h3>Performance Impact</h3>
+            <p>Maximizes UI performance. Ensuring that custom leaf nodes and list rows are skippable minimizes CPU work, resulting in smooth 60fps/120fps animations.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How do you verify if a Composable function is skippable at build time?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">You can enable Compose Compiler Metrics by adding compiler arguments in your `build.gradle` (using `reportsDestination` and `metricsDestination`). This generates text files (such as `composables.txt`) specifying whether each function is <code>restartable</code> and <code>skippable</code>, and identifying which parameters are unstable.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">What is the difference between a Composable being <code>restartable</code> vs <code>skippable</code>?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Passing lambda parameters (like `onClick = { model.action() }`) that capture unstable closures, which invalidates skippability unless wrapped in a `remember` block or compiler lambda optimization.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

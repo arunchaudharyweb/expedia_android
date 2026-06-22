@@ -1,55 +1,41 @@
 <div class="section-content">
-    <h1>Coroutines & Flow Deep Dive</h1>
+    <h1>Section 2: Coroutines & Concurrency</h1>
     <div class="section-meta">
-        <span>⏱ 18 min read</span>
-        <span>✓ Round 1 Core</span>
+        <span>⏱ 30 min read</span>
+        <span>✓ Part 1 Core</span>
     </div>
-
+    
     <p class="section-intro">
-        Advanced runtime execution strategies, flow concurrency patterns, stream lifecycle management, and testing frameworks for asynchronous Kotlin coroutines.
+        Deep dive into threads, processes, and coroutines execution pools, continuation state machine compilation, structured concurrency, cancellation bounds, flow streaming, and channels.
     </p>
 
     <!-- TOPIC 1 -->
     <article class="topic-card">
-        <h2 id="launch-vs-async">
+        <h2 id="threads">
             <input type="checkbox" class="topic-chk" data-topic="1">
-            <span>1. Launch vs Async Concurrency Builders</span>
-            <span class="topic-tag">Builders</span>
+            <span>1. Threads</span>
+            <span class="topic-tag">Concurrency</span>
         </h2>
         <div class="topic-body">
-            <p>
-                Coroutines provide two main launch builders:
-            </p>
-            <ul>
-                <li><strong>launch:</strong> Fire-and-forget builder. Returns a <code>Job</code>. Any unhandled exception is immediately propagated to the parent job, causing the parent to fail and cancel all sibling coroutines.</li>
-                <li><strong>async:</strong> Returns a <code>Deferred&lt;T&gt;</code> (a subclass of <code>Job</code>). It encapsulates the result of the computation. Unhandled exceptions are not thrown immediately; instead, they are captured and thrown when <code>await()</code> is called. However, if <code>async</code> is used as a root coroutine or inside structured scopes, child failures still propagate to the parent immediately, regardless of whether <code>await()</code> is invoked.</li>
-            </ul>
-            <pre><code class="language-kotlin">// Exception propagation in launch
-scope.launch {
-    throw RuntimeException("Fails immediately")
-}
-
-// Exception propagation in async
-val deferred = scope.async {
-    throw RuntimeException("Fails parent scope immediately if not supervised")
-}</code></pre>
-            
+            <h3>Internal Working</h3>
+            <p>Threads are the smallest schedulable units of execution managed by the operating system kernel. A Java/Kotlin thread maps 1:1 to a kernel thread (KLT) on Android's Linux-based OS. The OS kernel schedules threads using time-slicing and priority-based scheduling algorithms, preempting running threads to allow others to execute.</p>
+            <h3>Thread Behavior</h3>
+            <p>Threads share the process's heap memory but maintain their own private execution stack. Context switching between threads requires kernel-space transition, saving CPU registers (PC, SP), flushing CPU caches, and loading the next thread's state, which is CPU-expensive.</p>
+            <h3>Memory Usage</h3>
+            <p>On Android, each thread allocates a fixed stack size (typically 1MB, though it can vary between 320KB and 1MB depending on the VM configuration). This memory is reserved upfront, regardless of the work done by the thread, limiting the total number of concurrent active threads (usually around a few hundred before encountering OutOfMemoryError).</p>
+            <h3>Performance Considerations</h3>
+            <p>Creating and destroying threads is expensive. Thread pools (like Executors) mitigate creation costs, but high thread counts lead to CPU thrashing due to continuous context switching and cache invalidation.</p>
+            <h3>Common Interview Questions</h3>
             <div class="interview-qa-container">
                 <div class="qa-block">
                     <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain the differences in exception handling and return types between launch and async.</div>
-                </div>
-                <div class="qa-block">
+                    <div class="qa-text">What happens at the OS level when a thread context switch occurs?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text"><code>launch</code> is a fire-and-forget builder returning a <code>Job</code>, which propagates exceptions up the hierarchy immediately. <code>async</code> returns a <code>Deferred&lt;T&gt;</code>, allowing callers to retrieve results via <code>await()</code>. Exceptions are thrown when <code>await()</code> is invoked, but within a structured scope, a failure in <code>async</code> still cancels the parent job immediately.</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label followup">Senior Follow-Up</div>
-                    <div class="qa-text">How does wrapping an async call in a try-catch block affect its parent scope if the async coroutine fails?</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label mistake">Common Candidate Mistake</div>
-                    <div class="qa-text">Wrapping a call to <code>await()</code> in a try-catch block and expecting it to prevent parent cancellation (the failure has already propagated up through the coroutine tree).</div>
+                    <div class="qa-text">The CPU transitions from user space to kernel space. The CPU registers (program counter, stack pointer, general-purpose registers) of the active thread are saved to its Thread Control Block (TCB). The kernel scheduler determines the next thread to run, updates the MMU (Memory Management Unit) page tables if switching across processes, restores the CPU registers from the new thread's TCB, and transitions back to user space. This operation invalidates CPU caches (L1/L2), degrading performance.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does Android's ART (Android Runtime) handle thread scheduling differently from standard HotSpot JVMs?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Assuming that threads run independently without sharing heap memory, or that creating thousands of threads is free.</div>
                 </div>
             </div>
         </div>
@@ -57,42 +43,30 @@ val deferred = scope.async {
 
     <!-- TOPIC 2 -->
     <article class="topic-card">
-        <h2 id="withcontext-vs-async">
+        <h2 id="processes">
             <input type="checkbox" class="topic-chk" data-topic="2">
-            <span>2. withContext vs Async-Await Parallelism</span>
-            <span class="topic-tag">Execution</span>
+            <span>2. Processes</span>
+            <span class="topic-tag">OS Internals</span>
         </h2>
         <div class="topic-body">
-            <p>
-                Use <code>withContext</code> to change the dispatcher for a single sequential operation. It suspends the calling coroutine and returns the block result directly, avoiding the allocation overhead of launching an asynchronous job.
-            </p>
-            <p>
-                Use <code>async-await</code> only when executing multiple operations in parallel. If you perform sequential calls using <code>async-await</code>, you introduce unnecessary job allocations and scheduling overhead.
-            </p>
-            <pre><code class="language-kotlin">// CORRECT: Sequential dispatcher change
-val user = withContext(Dispatchers.IO) { api.getUser() }
-
-// CORRECT: Parallel execution
-val avatarDeferred = async { api.getAvatar() }
-val profileDeferred = async { api.getProfile() }
-val data = combineData(avatarDeferred.await(), profileDeferred.await())</code></pre>
-            
+            <h3>Internal Working</h3>
+            <p>A process is an isolated instance of an executing application with its own address space, memory, file descriptors, and security sandbox. On Android, each application runs in its own Linux process, spawned by the Zygote template process, and is assigned a unique User ID (UID) to enforce security boundaries.</p>
+            <h3>Thread Behavior</h3>
+            <p>A process must contain at least one thread (the Main/UI thread). Threads within the same process share heap memory, global variables, and open files. Communication across processes (IPC) cannot happen via direct memory access; instead, it requires mechanisms like Binder, AIDL, or Messenger.</p>
+            <h3>Memory Usage</h3>
+            <p>Processes have a significant memory footprint, including the heap, loaded dex classes, loaded native libraries (.so files), and graphic buffers. Android assigns a memory limit (heap size limit) to each process, ranging from 128MB to 512MB+ depending on device specs, triggering OOM if exceeded.</p>
+            <h3>Performance Considerations</h3>
+            <p>Spawning a process is slow, which is why Android uses Zygote to pre-warm the VM. Process termination and background management are handled by the Low Memory Killer (LMK) based on process importance (foreground, visible, service, cached).</p>
+            <h3>Common Interview Questions</h3>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">When should you use withContext instead of async/await?</div>
-                </div>
-                <div class="qa-block">
+                    <div class="qa-label question">What is the Zygote process in Android, and how does it optimize process creation?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Use <code>withContext</code> for sequential execution and dispatcher switching. It suspends the current block without spawning a new coroutine job. Use <code>async</code> only when executing multiple concurrent operations in parallel to improve performance.</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label followup">Senior Follow-Up</div>
-                    <div class="qa-text">What are the thread scheduling differences between sequential withContext calls and launching multiple async tasks?</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label mistake">Common Candidate Mistake</div>
-                    <div class="qa-text">Using sequential <code>async-await</code> blocks (e.g. <code>val a = async {}.await()</code> followed by <code>val b = async {}.await()</code>), which adds task allocation overhead without providing any concurrency.</div>
+                    <div class="qa-text">Zygote is a system process spawned at boot time that initializes the ART virtual machine, preloads core Java classes, and pre-compiles platform resources. When a new app process is requested, the system forks Zygote. Forking uses copy-on-write (COW) pages, which allows the new process to share the preloaded classes and resources with Zygote, drastically reducing app startup time and RAM consumption.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does Android's Low Memory Killer (LMK) select which process to kill when system resources are depleted?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Thinking that two apps can share memory directly if they are written by the same developer (they must explicitly request shared UID or use IPC).</div>
                 </div>
             </div>
         </div>
@@ -100,44 +74,30 @@ val data = combineData(avatarDeferred.await(), profileDeferred.await())</code></
 
     <!-- TOPIC 3 -->
     <article class="topic-card">
-        <h2 id="flow-cold-contract">
+        <h2 id="concurrency-vs-parallelism">
             <input type="checkbox" class="topic-chk" data-topic="3">
-            <span>3. Flow Cold Stream Contract</span>
-            <span class="topic-tag">Streams</span>
+            <span>3. Concurrency vs Parallelism</span>
+            <span class="topic-tag">Concurrency</span>
         </h2>
         <div class="topic-body">
-            <p>
-                A standard Kotlin <code>Flow</code> is a **cold stream**. It does not allocate memory or execute code until a terminal operator (such as <code>collect()</code>) is applied.
-            </p>
-            <p>
-                <strong>Execution Mechanics:</strong> Every collector executes the flow block from the beginning. If a flow has three active collectors, it runs its emitter sequence three independent times. It maintains no state and does not buffer values unless configured to do so.
-            </p>
-            <pre><code class="language-kotlin">val coldFlow = flow {
-    println("Flow started execution") // Prints on every collection
-    emit(1)
-}
-
-// Nothing prints here
-// Prints "Flow started execution" twice:
-coldFlow.collect()
-coldFlow.collect()</code></pre>
-            
+            <h3>Internal Working</h3>
+            <p>Concurrency is the composition of independently executing processes/tasks; it is about *structure*. Parallelism is the simultaneous execution of multiple tasks on separate hardware cores; it is about *execution*. You can have concurrency without parallelism (e.g., time-slicing on a single-core CPU).</p>
+            <h3>Thread Behavior</h3>
+            <p>Concurrency is achieved by interleaving threads via CPU scheduling. Parallelism is achieved when two threads execute instructions at the exact same physical clock cycle on different CPU cores.</p>
+            <h3>Memory Usage</h3>
+            <p>Concurrent execution shares memory and requires synchronization primitives (locks, volatile, atomic classes) to avoid race conditions. Parallel execution requires careful architecture to partition data and minimize cache-line bouncing (false sharing).</p>
+            <h3>Performance Considerations</h3>
+            <p>Parallelism scales with physical cores but is limited by Amdahl's Law (serial bottlenecks). Concurrency structures tasks to hide latency (like waiting for network I/O) even on single-core devices.</p>
+            <h3>Common Interview Questions</h3>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain what makes a Flow "cold" and how this differs from hot streams.</div>
-                </div>
-                <div class="qa-block">
+                    <div class="qa-label question">Can a single-core processor run parallel operations? Explain why or why not.</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">A Flow is cold because the producer block runs on-demand for each collector. Hot streams (like <code>StateFlow</code> or <code>SharedFlow</code>) execute independent of collectors, broadcasting values to multiple active listeners from a shared buffer.</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label followup">Senior Follow-Up</div>
-                    <div class="qa-text">How does Flow handle backpressure internally without using intermediate buffer buffers?</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label mistake">Common Candidate Mistake</div>
-                    <div class="qa-text">Performing side effects inside a Flow collector and expecting other collectors to receive those modifications.</div>
+                    <div class="qa-text">No. A single-core processor can run concurrent operations through time-slicing (rapidly swapping thread contexts), creating the illusion of parallel execution. True parallelism requires multiple physical CPU cores or execution units to execute instructions simultaneously.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain Amdahl's Law and its impact on parallelizing image processing tasks in a mobile application.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Confusing the two terms, claiming that coroutines execute in parallel when they are running on a single main thread loop.</div>
                 </div>
             </div>
         </div>
@@ -145,44 +105,30 @@ coldFlow.collect()</code></pre>
 
     <!-- TOPIC 4 -->
     <article class="topic-card">
-        <h2 id="stateflow-vs-sharedflow">
+        <h2 id="coroutinescope">
             <input type="checkbox" class="topic-chk" data-topic="4">
-            <span>4. StateFlow vs SharedFlow Decision Matrix</span>
-            <span class="topic-tag">Streams</span>
+            <span>4. CoroutineScope</span>
+            <span class="topic-tag">Scope</span>
         </h2>
         <div class="topic-body">
-            <p>
-                Compare the behavior of hot streams:
-            </p>
-            <ul>
-                <li><strong>StateFlow:</strong> Retains a single state value. It requires an initial value, exposes it via <code>value</code>, and deduplicates emissions (ignores updates equal to the current state). Ideal for managing UI state.</li>
-                <li><strong>SharedFlow:</strong> A generic event bus. It does not require an initial value and does not deduplicate emissions. It can buffer and replay events to new subscribers, making it ideal for one-time events (such as navigation or snackbar alerts).</li>
-            </ul>
-            <pre><code class="language-kotlin">// StateFlow requires initial value
-val uiState = MutableStateFlow<UiState>(UiState.Loading)
-
-// SharedFlow configured as an event channel
-val navigationEvents = MutableSharedFlow<Screen>(
-    replay = 0, // Do not replay old navigation events
-    extraBufferCapacity = 1 // Buffer size to prevent blocking emitters
-)</code></pre>
-            
+            <h3>Internal Working</h3>
+            <p>A <code>CoroutineScope</code> is a wrapper interface holding a single property: <code>coroutineContext</code>. It serves as an entry point for launching new coroutines. The scope establishes a boundary that defines the lifecycle, default dispatcher, and exception handling for all coroutines launched within it.</p>
+            <h3>Thread Behavior</h3>
+            <p>The scope itself is thread-agnostic. The threading behavior is defined by the <code>CoroutineDispatcher</code> present inside its <code>CoroutineContext</code> (e.g., <code>Dispatchers.Main</code> vs <code>Dispatchers.IO</code>).</p>
+            <h3>Memory Usage</h3>
+            <p>A scope holds reference to its running jobs. If a scope is cancelled, it cancels all child coroutines, releasing references to avoid memory leaks. Retaining a strong reference to an active scope linked to an inactive class (e.g., Activity) leaks the activity.</p>
+            <h3>Performance Considerations</h3>
+            <p>Properly managing scopes (e.g., using <code>viewModelScope</code> or <code>lifecycleScope</code>) prevents wasting CPU and network resources on work that is no longer needed after the user exits a screen.</p>
+            <h3>Common Interview Questions</h3>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">When would you choose SharedFlow over StateFlow for Android UI updates?</div>
-                </div>
-                <div class="qa-block">
+                    <div class="qa-label question">What is the difference between creating a custom CoroutineScope using CoroutineScope() and using MainScope()?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Use <code>StateFlow</code> for persistent UI state that survives configuration changes. Use <code>SharedFlow</code> for transient events (such as showing a Toast or navigation) that should not be re-emitted if the activity rotates and re-subscribes.</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label followup">Senior Follow-Up</div>
-                    <div class="qa-text">What happens to an emitter on MutableStateFlow if the collector block is slow? Does it block the VM thread?</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label mistake">Common Candidate Mistake</div>
-                    <div class="qa-text">Using <code>StateFlow</code> to emit screen navigation events. This can cause the application to re-navigate if the screen rotates and re-subscribes to the last emitted state.</div>
+                    <div class="qa-text"><code>CoroutineScope(context)</code> creates a scope using the context passed to it. If the context does not contain a <code>Job</code>, it attaches a default Job. <code>MainScope()</code> is a convenience factory function that initializes a scope with a <code>SupervisorJob()</code> and <code>Dispatchers.Main</code>, specifically tailored for UI components.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">What happens if you launch a coroutine inside a scope using a custom Job passed in the builder context parameter?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Failing to cancel custom scopes in <code>onDestroy()</code> of lifecycle components, causing background leaks.</div>
                 </div>
             </div>
         </div>
@@ -190,46 +136,30 @@ val navigationEvents = MutableSharedFlow<Screen>(
 
     <!-- TOPIC 5 -->
     <article class="topic-card">
-        <h2 id="sharing-operators">
+        <h2 id="job">
             <input type="checkbox" class="topic-chk" data-topic="5">
-            <span>5. shareIn and stateIn Sharing Configuration</span>
-            <span class="topic-tag">Streams</span>
+            <span>5. Job</span>
+            <span class="topic-tag">Lifecycle</span>
         </h2>
         <div class="topic-body">
-            <p>
-                Use <code>shareIn</code> and <code>stateIn</code> to convert cold flows into hot <code>SharedFlow</code> or <code>StateFlow</code> instances.
-            </p>
-            <p>
-                <strong>SharingStarted Policies:</strong>
-            </p>
-            <ul>
-                <li><strong>Eagerly:</strong> Starts the upstream flow immediately and keeps it active even if there are no collectors.</li>
-                <li><strong>Lazily:</strong> Starts the upstream flow when the first collector subscribes and keeps it active indefinitely.</li>
-                <li><strong>WhileSubscribed(5000):</strong> Starts the upstream flow when the first collector subscribes and cancels it if there are no collectors for longer than 5 seconds. This prevents resource leaks during transient configuration changes (such as rotation).</li>
-            </ul>
-            <pre><code class="language-kotlin">val hotStateFlow = coldDbFlow
-    .stateIn(
-        scope = viewModelScope,
-        started = SharingStarted.WhileSubscribed(5000), // Grace period
-        initialValue = emptyList()
-    )</code></pre>
-            
+            <h3>Internal Working</h3>
+            <p>A <code>Job</code> represents a cancellable background task with a defined lifecycle. It has states: New, Active, Completing, Completed, Cancelling, and Cancelled. Jobs are arranged in a hierarchical parent-child structure. If a child Job fails, it propagates the exception to its parent, which cancels all other children and then cancels itself.</p>
+            <h3>Thread Behavior</h3>
+            <p>Jobs manage state transitions atomically using atomic CAS (Compare-And-Swap) operations on state variables, ensuring thread-safe lifecycle progression across CPU pools.</p>
+            <h3>Memory Usage</h3>
+            <p>A Job stores references to its child jobs in a concurrent list and holds references to its cancellation handlers. Once a Job completes, these collections are cleared, allowing garbage collection of executed structures.</p>
+            <h3>Performance Considerations</h3>
+            <p>Using <code>Job()</code> as a parent of multiple coroutines means that if one coroutine fails, all other sibling coroutines are immediately cancelled. This transaction-like behavior must be avoided if siblings are independent.</p>
+            <h3>Common Interview Questions</h3>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain the SharingStarted.WhileSubscribed policy and why a 5-second delay is recommended for Android applications.</div>
-                </div>
-                <div class="qa-block">
+                    <div class="qa-label question">Explain how exception propagation works in a standard Job hierarchy.</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text"><code>WhileSubscribed(5000)</code> cancels the upstream database or network stream 5 seconds after the last collector disconnects. The 5-second buffer prevents the stream from being torn down and rebuilt during configuration changes (like rotation, where the UI disconnects and reconnects within milliseconds).</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label followup">Senior Follow-Up</div>
-                    <div class="qa-text">What are the resource implications of using SharingStarted.Eagerly in ViewModels?</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label mistake">Common Candidate Mistake</div>
-                    <div class="qa-text">Using <code>SharingStarted.Lazily</code> on streams that query sensors or databases, leaking active listeners if the UI is dismissed.</div>
+                    <div class="qa-text">When a child coroutine fails with an exception (other than <code>CancellationException</code>), it immediately cancels its own Job. It then propagates the exception up to its parent Job. The parent Job cancels its other children, cancels itself, and propagates the exception further up the tree until it reaches a root coroutine scope, which delegates it to the CoroutineExceptionHandler or crashes the application.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does the internal state machine transition of a Job prevent race conditions when cancel() and complete() are called simultaneously?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Creating a custom Job using <code>Job()</code> and passing it to a scope, then forgetting that cancelling this job renders the scope permanently cancelled.</div>
                 </div>
             </div>
         </div>
@@ -237,45 +167,30 @@ val navigationEvents = MutableSharedFlow<Screen>(
 
     <!-- TOPIC 6 -->
     <article class="topic-card">
-        <h2 id="flow-operators">
+        <h2 id="supervisorjob">
             <input type="checkbox" class="topic-chk" data-topic="6">
-            <span>6. Advanced Flow Operators (flatMapLatest, combine, zip, conflate, debounce)</span>
-            <span class="topic-tag">Operators</span>
+            <span>6. SupervisorJob</span>
+            <span class="topic-tag">Lifecycle</span>
         </h2>
         <div class="topic-body">
-            <p>
-                Advanced flow operators control timing and concurrency:
-            </p>
-            <ul>
-                <li><strong>flatMapLatest:</strong> Cancels the previous in-flight collector flow whenever a new value is emitted. Useful for search autocomplete queries.</li>
-                <li><strong>combine:</strong> Emits a combined value whenever either upstream flow emits a new element.</li>
-                <li><strong>zip:</strong> Combines elements pairwise, emitting a value only when both upstream flows have emitted a corresponding item.</li>
-                <li><strong>conflate:</strong> Skips intermediate values if the collector is slow, processing only the latest value.</li>
-                <li><strong>debounce:</strong> Delays emission, dropping values that are followed by another emission within the specified time window. Useful for search input throttling.</li>
-            </ul>
-            <pre><code class="language-kotlin">// Autocomplete Search Pipeline
-val searchResults = searchQueryFlow
-    .debounce(300) // Wait 300ms after user stops typing
-    .flatMapLatest { query ->
-        flow { emit(repository.searchHotels(query)) } // Cancel previous query if new query is typed
-    }</code></pre>
-            
+            <h3>Internal Working</h3>
+            <p>A <code>SupervisorJob</code> is a specialized implementation of <code>Job</code> that overrides the default exception propagation behavior. It does not cancel its sibling coroutines when a child coroutine fails. The exception is not propagated to the parent; instead, the child handles it, allowing other coroutines in the scope to run uninterrupted.</p>
+            <h3>Thread Behavior</h3>
+            <p>Thread coordination is identical to standard Jobs, but failure paths are isolated. Sibling threads execution state remains unaffected by concurrent sibling crashes.</p>
+            <h3>Memory Usage</h3>
+            <p>Similar to standard Jobs, but references to failed children are removed immediately without triggering teardowns of adjacent nodes, keeping memory clean.</p>
+            <h3>Performance Considerations</h3>
+            <p>Critical for top-level app components (like ViewModels or WorkManager tasks) that launch multiple independent requests (e.g., network queries for different UI parts).</p>
+            <h3>Common Interview Questions</h3>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">How does flatMapLatest combine with debounce to optimize search query performance?</div>
-                </div>
-                <div class="qa-block">
+                    <div class="qa-label question">Why does launching a coroutine with launch(SupervisorJob()) inside a normal scope still cause the scope to cancel if the launch fails?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text"><code>debounce(300)</code> filters out rapid keystrokes, emitting the query only after the user stops typing for 300ms. <code>flatMapLatest</code> maps this query to a network request, automatically canceling any active, in-flight search requests if the user resumes typing and emits a new query.</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label followup">Senior Follow-Up</div>
-                    <div class="qa-text">What is the difference in exception propagation between combine and zip?</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label mistake">Common Candidate Mistake</div>
-                    <div class="qa-text">Using a standard <code>flatMapMerge</code> for search operations. This processes queries concurrently rather than canceling obsolete in-flight requests, wasting bandwidth.</div>
+                    <div class="qa-text">Because <code>launch(SupervisorJob())</code> makes the new coroutine's parent a <code>SupervisorJob</code>, but that <code>SupervisorJob</code> is *not* the parent of the scope itself. When the coroutine fails, it reports to the <code>SupervisorJob</code>, which does nothing. However, the coroutine is launched inside the scope, and the scope's own Job still receives the uncaught exception because it was passed as an argument rather than being set as the scope's root Job. To work correctly, the scope itself must be initialized with a <code>SupervisorJob</code> (e.g., <code>CoroutineScope(SupervisorJob())</code>).</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain the internal differences in <code>childCancelled</code> method implementations between JobSupport and SupervisorJobImpl.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Assuming that wrapping child operations in a standard <code>try-catch</code> block is unnecessary when using a <code>SupervisorJob</code> (uncaught exceptions will still crash the app if no handler is installed).</div>
                 </div>
             </div>
         </div>
@@ -283,48 +198,30 @@ val searchResults = searchQueryFlow
 
     <!-- TOPIC 7 -->
     <article class="topic-card">
-        <h2 id="callback-flow">
+        <h2 id="launch">
             <input type="checkbox" class="topic-chk" data-topic="7">
-            <span>7. callbackFlow for Callback Conversion</span>
-            <span class="topic-tag">Streams</span>
+            <span>7. launch Coroutine Builder</span>
+            <span class="topic-tag">Builders</span>
         </h2>
         <div class="topic-body">
-            <p>
-                Use <code>callbackFlow</code> to convert callback-based APIs into Kotlin Flows. 
-            </p>
-            <p>
-                <strong>Implementation Rules:</strong> Use <code>trySend()</code> to emit values inside callbacks safely. You must call <code>awaitClose</code> at the end of the block to unregister the callback when the flow collector cancels. Failing to include <code>awaitClose</code> leaks the callback listener.
-            </p>
-            <pre><code class="language-kotlin">fun observeLocation(manager: LocationManager): Flow<Location> = callbackFlow {
-    val callback = object : LocationListener {
-        override fun onLocation(location: Location) {
-            trySend(location) // Emits safely without blocking
-        }
-    }
-    manager.register(callback)
-    
-    // MANDATORY: keeps coroutine active and runs clean-up code on cancellation
-    awaitClose {
-        manager.unregister(callback)
-    }
-}</code></pre>
-            
+            <h3>Internal Working</h3>
+            <p><code>launch</code> is a fire-and-forget coroutine builder. It spawns a new coroutine without blocking the current thread and returns a reference to its <code>Job</code>. It is defined as an extension function on <code>CoroutineScope</code>.</p>
+            <h3>Thread Behavior</h3>
+            <p>The coroutine runs on the dispatcher specified in the scope or builder context. If the dispatcher is not specified, it inherits the dispatcher of the parent scope.</p>
+            <h3>Memory Usage</h3>
+            <p>Allocates a new coroutine context, a child Job instance, and a continuation object wrapper. These remain in memory until the coroutine block completes or is cancelled.</p>
+            <h3>Performance Considerations</h3>
+            <p>Ideal for side effects, database writes, analytics logging, and UI events where no return value is required. It has very low scheduling overhead compared to JVM thread creation.</p>
+            <h3>Common Interview Questions</h3>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Why is awaitClose mandatory in callbackFlow, and what happens if it is omitted?</div>
-                </div>
-                <div class="qa-block">
+                    <div class="qa-label question">What is the return type of the launch builder, and how can it be used to wait for completion?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text"><code>awaitClose</code> keeps the coroutine block active while values are being emitted. When the collector cancels, it executes the code block inside <code>awaitClose</code> to unregister listeners. If omitted, the listener is never cleaned up, causing memory leaks, and the channel may close prematurely.</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label followup">Senior Follow-Up</div>
-                    <div class="qa-text">What is the thread-safety guarantee of <code>trySend</code> inside concurrent platform callback threads?</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label mistake">Common Candidate Mistake</div>
-                    <div class="qa-text">Using a standard <code>flow { ... }</code> builder with a callback API, which fails because the flow builder closes immediately without waiting for the callback to trigger.</div>
+                    <div class="qa-text">The <code>launch</code> builder returns a <code>Job</code>. You can suspend the caller until the launched coroutine is complete by calling <code>job.join()</code> on the returned instance.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does <code>join()</code> suspend internally without blocking the calling thread?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using <code>launch</code> when you need to run concurrent tasks and aggregate their return values (use <code>async</code> instead).</div>
                 </div>
             </div>
         </div>
@@ -332,39 +229,30 @@ val searchResults = searchQueryFlow
 
     <!-- TOPIC 8 -->
     <article class="topic-card">
-        <h2 id="flow-cancellation">
+        <h2 id="async">
             <input type="checkbox" class="topic-chk" data-topic="8">
-            <span>8. Flow Cancellation & Exception Propagation</span>
-            <span class="topic-tag">Exception</span>
+            <span>8. async Coroutine Builder</span>
+            <span class="topic-tag">Builders</span>
         </h2>
         <div class="topic-body">
-            <p>
-                Flows respect coroutine cancellation. They are cancellable by default; the collector loop checks for cancellation (using <code>ensureActive()</code>) before emitting each value.
-            </p>
-            <p>
-                <strong>Exceptions:</strong> Downstream exceptions are propagated to the collector. Upstream exceptions can be caught using the <code>catch</code> operator, allowing the stream to emit a fallback value or transition to an error state.
-            </p>
-            <pre><code class="language-kotlin">val safeFlow = repository.getHotels()
-    .catch { error ->
-        emit(emptyList()) // Catch upstream exceptions and emit a fallback value
-    }</code></pre>
-            
+            <h3>Internal Working</h3>
+            <p><code>async</code> is a coroutine builder that returns a <code>Deferred&lt;T&gt;</code>, which inherits from <code>Job</code>. It is designed to perform asynchronous tasks that return a result. Callers retrieve the result using the suspending function <code>await()</code>.</p>
+            <h3>Thread Behavior</h3>
+            <p>Executes concurrently on the designated dispatcher pool. When <code>await()</code> is called, the calling thread does not block; instead, the calling coroutine suspends until the deferred result is computed.</p>
+            <h3>Memory Usage</h3>
+            <p>Allocates a <code>DeferredCoroutine</code> object, which stores the return value once complete. If the coroutine is cancelled before <code>await()</code>, the references inside it are cleaned up.</p>
+            <h3>Performance Considerations</h3>
+            <p>Enables concurrent execution. Parallel requests (e.g. fetching user data and user reviews simultaneously) should be wrapped in <code>async</code> blocks to execute in parallel, reducing total latency.</p>
+            <h3>Common Interview Questions</h3>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Does the Flow .catch operator intercept exceptions that occur inside the collect {} block?</div>
-                </div>
-                <div class="qa-block">
+                    <div class="qa-label question">What happens if an exception is thrown inside an async block, but await() is never called?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">No. The <code>.catch</code> operator only intercepts exceptions thrown by *upstream* operators and the producer block. Exceptions thrown *downstream* (inside <code>collect {}</code>) are not caught. To handle downstream exceptions, wrap the collection call in a standard try-catch block, or use <code>onEach { ... }.catch { ... }.launchIn(scope)</code>.</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label followup">Senior Follow-Up</div>
-                    <div class="qa-text">How do you implement custom flow-cancellation checks for a loop that emits elements without suspending?</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label mistake">Common Candidate Mistake</div>
-                    <div class="qa-text">Placing <code>.catch</code> after a <code>collect</code> operator. The catch operator must be declared upstream of the terminal operator to capture errors.</div>
+                    <div class="qa-text">If <code>async</code> is child to a standard coroutine scope, the exception propagates to the parent immediately, cancelling the parent and all sibling coroutines, regardless of whether <code>await()</code> is called. If launched under a <code>supervisorScope</code> or <code>SupervisorJob</code>, the exception does not propagate, but it is stored. If you never call <code>await()</code>, the exception is never rethrown to the caller, but the coroutine itself fails and releases memory.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain how the <code>Deferred</code> implementation implements wait queues internally for multiple concurrent awaiters.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using sequential <code>async</code> calls like: <code>val x = async { f() }.await()</code>, which runs tasks serially, completely defeating the purpose of parallelism.</div>
                 </div>
             </div>
         </div>
@@ -372,43 +260,30 @@ val searchResults = searchQueryFlow
 
     <!-- TOPIC 9 -->
     <article class="topic-card">
-        <h2 id="scopes-decomposition">
+        <h2 id="suspend-functions">
             <input type="checkbox" class="topic-chk" data-topic="9">
-            <span>9. coroutineScope vs supervisorScope decomposition</span>
-            <span class="topic-tag">Concurrecy</span>
+            <span>9. suspend Functions</span>
+            <span class="topic-tag">Compilation</span>
         </h2>
         <div class="topic-body">
-            <p>
-                Use structured scope builders to decompose work into parallel tasks:
-            </p>
-            <ul>
-                <li><strong>coroutineScope:</strong> A failure in any child immediately cancels the scope and all other children. Use this when the tasks are interdependent and a single failure invalidates the entire operation.</li>
-                <li><strong>supervisorScope:</strong> Child failures are handled independently, allowing siblings to continue executing. Use this when tasks are independent, such as loading multiple unrelated cards on a dashboard.</li>
-            </ul>
-            <pre><code class="language-kotlin">// Dashboards: independent operations
-suspend fun loadDashboard() = supervisorScope {
-    val hotels = async { repository.getHotels() } // If this fails...
-    val flights = async { repository.getFlights() } // ...this still runs!
-    
-    Dashboard(hotels.runCatching { await() }.getOrDefault(emptyList()), flights.await())
-}</code></pre>
-            
+            <h3>Internal Working</h3>
+            <p>A suspending function is compiled by the Kotlin compiler using Continuation-Passing Style (CPS). The compiler adds an extra parameter of type <code>Continuation&lt;T&gt;</code> to the function signature and changes the return type to <code>Any?</code> (which can return the result or the marker <code>COROUTINE_SUSPENDED</code>).</p>
+            <h3>Thread Behavior</h3>
+            <p>Suspending functions do not block the thread. When a coroutine reaches a suspension point (like network call delay), it yields its execution thread to the dispatcher. Once the task finishes, the dispatcher resumes the coroutine on an available thread.</p>
+            <h3>Memory Usage</h3>
+            <p>Spawns a state machine object (a subclass of <code>ContinuationImpl</code>) that captures the local variables and execution state (labels). This stack-like structure resides on the heap.</p>
+            <h3>Performance Considerations</h3>
+            <p>Suspending functions are lightweight. They allow thousands of concurrent tasks to run on a small thread pool, reducing memory consumption compared to thread-per-task models.</p>
+            <h3>Common Interview Questions</h3>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain how coroutineScope and supervisorScope differ when handling sibling failures.</div>
-                </div>
-                <div class="qa-block">
+                    <div class="qa-label question">What does "suspend" mean, and how does the JVM implement it without native runtime support?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text"><code>coroutineScope</code> cancels all children if any child fails, behaving like a single transaction. <code>supervisorScope</code> isolates failures, allowing other children to complete even if one fails.</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label followup">Senior Follow-Up</div>
-                    <div class="qa-text">What is the difference between declaring a CoroutineExceptionHandler inside coroutineScope vs supervisorScope?</div>
-                </div>
-                <div class="qa-block">
-                    <div class="qa-label mistake">Common Candidate Mistake</div>
-                    <div class="qa-text">Using a standard <code>coroutineScope</code> to fetch independent UI widgets, causing the entire screen to fail if a single widget network request fails.</div>
+                    <div class="qa-text">"Suspend" means the execution of the coroutine is paused, freeing the underlying thread to run other tasks. The JVM has no native concept of coroutines. The Kotlin compiler rewrites suspending functions by converting them to callbacks under the hood (Continuation-Passing Style) and compiling the function logic into a state machine.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Why does a suspending function signature return <code>Any?</code> in decompiled Java code?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Thinking that marking a function as `suspend` automatically runs it on a background thread (it runs on the caller's dispatcher unless <code>withContext</code> is used).</div>
                 </div>
             </div>
         </div>
@@ -416,49 +291,478 @@ suspend fun loadDashboard() = supervisorScope {
 
     <!-- TOPIC 10 -->
     <article class="topic-card">
-        <h2 id="testing-coroutines">
+        <h2 id="continuation">
             <input type="checkbox" class="topic-chk" data-topic="10">
-            <span>10. Testing Coroutines & Turbine Flow Testing</span>
-            <span class="topic-tag">Testing</span>
+            <span>10. Continuation Interface</span>
+            <span class="topic-tag">Compilation</span>
         </h2>
         <div class="topic-body">
-            <p>
-                Testing coroutines requires a predictable, controlled environment:
-            </p>
-            <ul>
-                <li><strong>runTest:</strong> Automatically skips delays (virtual time progression) to execute tests instantly.</li>
-                <li><strong>StandardTestDispatcher:</strong> Queues execution, requiring you to call <code>scheduler.advanceUntilIdle()</code> to run pending tasks.</li>
-                <li><strong>Turbine:</strong> A testing library for flows that lets you assert emissions sequentially.</li>
-            </ul>
-            <pre><code class="language-kotlin">@Test
-fun testSearchPipeline() = runTest {
-    val resultsFlow = repository.search("Expedia")
-    
-    // Using Turbine to assert emissions sequentially
-    resultsFlow.test {
-        assertEquals(SearchResult.Loading, awaitItem())
-        val data = awaitItem() as SearchResult.Success
-        assertEquals(2, data.hotels.size)
-        awaitComplete()
-    }
+            <h3>Internal Working</h3>
+            <p>The <code>Continuation</code> interface is the fundamental building block of Kotlin's coroutine runtime. It is defined as:
+            <pre><code class="language-kotlin">interface Continuation&lt;in T&gt; {
+    val context: CoroutineContext
+    fun resumeWith(result: Result&lt;T&gt;)
 }</code></pre>
-            
+            It serves as a generic callback representing the remainder of a computation after a suspension point.</p>
+            <h3>Thread Behavior</h3>
+            <p>When a suspending function completes its execution, it calls <code>resumeWith()</code>. The dispatcher intercepts this call to schedule the execution on the correct thread pool.</p>
+            <h3>Memory Usage</h3>
+            <p>Each suspension point creates a nested Continuation object. If a coroutine calls multiple suspending functions in a chain, they form a linked list of Continuations, similar to a stack trace on the heap.</p>
+            <h3>Performance Considerations</h3>
+            <p>Allocating continuations is cheap, but deep recursive suspending calls can increase GC pressure. The compiler optimizes this by sharing continuation instances within the same function.</p>
+            <h3>Common Interview Questions</h3>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain how runTest controls execution time, and how Turbine simplifies flow testing.</div>
-                </div>
-                <div class="qa-block">
+                    <div class="qa-label question">How does a Continuation resemble a callback under the hood?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text"><code>runTest</code> executes coroutines using a <code>TestCoroutineScheduler</code>, which skips delays to run tests instantly. Turbine simplifies flow testing by capturing emissions in a channel, allowing you to assert events sequentially using suspending calls like <code>awaitItem()</code>.</div>
+                    <div class="qa-text">A Continuation is effectively a callback with a <code>CoroutineContext</code> attached. The <code>resumeWith</code> method acts as the success/failure callback, passing a <code>Result&lt;T&gt;</code> to resume execution at the exact state instruction where suspension occurred.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does SafeContinuation prevent double invocation of resume inside callback adapters?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Believing that Continuation is an OS-level construct; it is a pure compiler-generated Kotlin class.</div>
                 </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 11 -->
+    <article class="topic-card">
+        <h2 id="state-machine">
+            <input type="checkbox" class="topic-chk" data-topic="11">
+            <span>11. State Machine Transformation</span>
+            <span class="topic-tag">Compilation</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>The compiler rewrites the body of a suspending function into a switch-case state machine. Every suspension point (like a call to another suspending function) is assigned a state label (0, 1, 2, etc.). When a suspension point is reached, the current state and local variables are saved to the Continuation object, and the function returns <code>COROUTINE_SUSPENDED</code>.</p>
+            <h3>Thread Behavior</h3>
+            <p>When the async operation completes, the continuation is invoked with <code>resumeWith()</code>. The function is called again, reads the state label from the continuation, jumps directly to the saved label using the switch statement, and restores its local variables.</p>
+            <h3>Memory Usage</h3>
+            <p>The state machine is stored in a single compiled class. The runtime memory includes the continuation state object holding local variable references while suspended.</p>
+            <h3>Performance Considerations</h3>
+            <p>This state machine approach avoids creating separate anonymous inner classes for every callback step, reducing compiled file size (.dex) and garbage collector overhead.</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label followup">Senior Follow-Up</div>
-                    <div class="qa-text">Why does <code>Dispatchers.setMain</code> need to be called in JUnit test setup blocks?</div>
+                    <div class="qa-label question">Decompile a simple suspending function in your mind and explain the switch-case logic.</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">A function with two suspending calls:
+                    <pre><code class="language-kotlin">suspend fun load() {
+    val a = fetchA()
+    val b = fetchB(a)
+}</code></pre>
+                    is transformed into:
+                    <pre><code class="language-kotlin">fun load(cont: Continuation): Any? {
+    val sm = cont as? LoadSM ?: LoadSM(cont)
+    switch(sm.label) {
+        case 0:
+            sm.label = 1
+            val res = fetchA(sm)
+            if (res == COROUTINE_SUSPENDED) return COROUTINE_SUSPENDED
+        case 1:
+            val a = sm.result
+            sm.label = 2
+            val res = fetchB(a, sm)
+            if (res == COROUTINE_SUSPENDED) return COROUTINE_SUSPENDED
+        case 2:
+            return Unit
+    }
+}</code></pre></div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How are exceptions caught and propagated inside the switch-case blocks of the compiled state machine?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Assuming each suspending call spawns an independent background thread.</div>
                 </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 12 -->
+    <article class="topic-card">
+        <h2 id="dispatcher-main">
+            <input type="checkbox" class="topic-chk" data-topic="12">
+            <span>12. Dispatchers.Main</span>
+            <span class="topic-tag">Dispatchers</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>Dispatchers.Main</code> is a coroutine dispatcher optimized for UI operations. On Android, it uses the main Looper (via a Handler-backed scheduler) to queue execution blocks onto the application's Main Thread MessageQueue.</p>
+            <h3>Thread Behavior</h3>
+            <p>Forces execution on the Main/UI Thread. If the coroutine is already running on the main thread, <code>Dispatchers.Main.immediate</code> can bypass the Handler queue to execute immediately, preventing frame drops.</p>
+            <h3>Memory Usage</h3>
+            <p>Uses a lightweight Runnable allocation sent to the Android Main Looper. No new thread stack is created.</p>
+            <h3>Performance Considerations</h3>
+            <p>Crucial for UI updates, LiveData observations, and Compose state changes. Blocking this dispatcher with long calculations triggers Application Not Responding (ANR) dialogs.</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label mistake">Common Candidate Mistake</div>
-                    <div class="qa-text">Using <code>runBlocking</code> instead of <code>runTest</code> for tests that contain delays, causing the test suite to block and slow down.</div>
+                    <div class="qa-label question">What is the difference between Dispatchers.Main and Dispatchers.Main.immediate?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text"><code>Dispatchers.Main</code> posts a task to the main thread's Handler queue, which schedules it for the next event loop tick, even if you are already on the main thread. <code>Dispatchers.Main.immediate</code> checks if the caller is already running on the main thread. If so, it executes the block immediately without posting to the message queue, avoiding frame scheduling overhead.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does Android's Looper process Coroutine tasks compared to standard Handler runnables?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using <code>Dispatchers.Main</code> for intensive JSON parsing or database queries.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 13 -->
+    <article class="topic-card">
+        <h2 id="dispatcher-io">
+            <input type="checkbox" class="topic-chk" data-topic="13">
+            <span>13. Dispatchers.IO</span>
+            <span class="topic-tag">Dispatchers</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>Dispatchers.IO</code> is designed for blocking I/O operations (network queries, disk reads/writes, file system actions). Under the hood, it shares a thread pool with <code>Dispatchers.Default</code>, but is configured to allow a much larger number of concurrent threads.</p>
+            <h3>Thread Behavior</h3>
+            <p>Threads are dynamically created and destroyed based on demand. The thread pool limit is bounded by the system property <code>kotlinx.coroutines.io.parallelism</code>, defaulting to the maximum of 64 or the number of CPU cores.</p>
+            <h3>Memory Usage</h3>
+            <p>Spawns multiple threads if tasks block. Each thread reserves stack memory, meaning high concurrency on IO can consume several megabytes of RAM.</p>
+            <h3>Performance Considerations</h3>
+            <p>Prevents blocking the Main Thread or starvation of CPU-bound tasks on <code>Dispatchers.Default</code>. You can use <code>limitedParallelism</code> on <code>Dispatchers.IO</code> to throttle access to thread-sensitive resources (like database writes).</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How does Dispatchers.IO share threads with Dispatchers.Default, and why?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">They share the same underlying pool of worker threads. However, <code>Dispatchers.Default</code> limits active threads to the core count to prevent CPU thrashing. <code>Dispatchers.IO</code> allows up to 64 threads (or more) because I/O threads spend most of their time suspended (waiting for network or disk), meaning they do not compete for CPU execution cycles. Sharing the thread pool allows workers to be reused, avoiding thread creation overhead.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does <code>Dispatchers.IO.limitedParallelism(1)</code> replace a single-threaded executor for writing to a database safely?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using <code>Dispatchers.IO</code> for heavy mathematical operations, which starves actual I/O operations.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 14 -->
+    <article class="topic-card">
+        <h2 id="dispatcher-default">
+            <input type="checkbox" class="topic-chk" data-topic="14">
+            <span>14. Dispatchers.Default</span>
+            <span class="topic-tag">Dispatchers</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>Dispatchers.Default</code> is optimized for CPU-intensive tasks (image processing, sorting large lists, parsing complex JSON structures, cryptography). It runs on a fixed thread pool size.</p>
+            <h3>Thread Behavior</h3>
+            <p>The maximum number of threads matches the number of physical CPU cores (but is at least 2). This ensures maximum CPU utilization without causing thread context switching overhead.</p>
+            <h3>Memory Usage</h3>
+            <p>Maintains a fixed, small thread footprint. No memory spike occurs under load because tasks are queued instead of spawning new threads.</p>
+            <h3>Performance Considerations</h3>
+            <p>Executing I/O operations on this dispatcher will starve CPU tasks, as blocking a thread prevents other queued CPU tasks from running.</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">When should you explicitly switch to Dispatchers.Default in an Android application?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">You should use <code>Dispatchers.Default</code> whenever you perform heavy computations, such as parsing large JSON payloads returned from network responses, filtering/sorting lists of hundreds of hotels, or executing cryptographic operations. This offloads the CPU work from the main thread.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain how the Work-Stealing Algorithm works inside the CoroutineScheduler of Dispatchers.Default.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Assuming that <code>Dispatchers.Default</code> has an infinite thread pool limit similar to <code>Dispatchers.IO</code>.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 15 -->
+    <article class="topic-card">
+        <h2 id="dispatcher-unconfined">
+            <input type="checkbox" class="topic-chk" data-topic="15">
+            <span>15. Dispatchers.Unconfined</span>
+            <span class="topic-tag">Dispatchers</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>Dispatchers.Unconfined</code> starts execution on the current thread. However, when a suspension point is reached, the coroutine resumes on whatever thread executes the resuming operation. It does not confine execution to any specific thread pool.</p>
+            <h3>Thread Behavior</h3>
+            <p>Thread execution is unpredictable after suspension. If the coroutine is resumed by a background network callback, the remaining code blocks run on that network thread.</p>
+            <h3>Memory Usage</h3>
+            <p>Extremely low overhead, as tasks do not require queuing to a dispatcher. It executes immediately on the stack of the caller.</p>
+            <h3>Performance Considerations</h3>
+            <p>Not recommended for general application logic because it can run tasks on critical threads (like the UI thread) if resumed there. It is primarily used in tests that require synchronous execution without scheduling delays.</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why is Dispatchers.Unconfined generally discouraged for production Android code?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Because it does not guarantee which thread the code will run on after suspension. If a background I/O operation resumes the coroutine, and the next step performs a UI operation, it will crash the app because Android UI modifications must occur on the main thread. Or, conversely, a heavy task might run on the main thread, causing frame drops.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Compare Dispatchers.Unconfined and empty CoroutineContext in terms of thread propagation.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using <code>Dispatchers.Unconfined</code> under the assumption that it behaves identically to `Dispatchers.Default`.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 16 -->
+    <article class="topic-card">
+        <h2 id="structured-concurrency">
+            <input type="checkbox" class="topic-chk" data-topic="16">
+            <span>16. Structured Concurrency</span>
+            <span class="topic-tag">Design</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>Structured Concurrency is a programming paradigm ensuring that coroutines are launched within a defined scope, linking their lifetimes. A parent coroutine is not complete until all its child coroutines have completed. Cancellation and exception states propagate automatically through the hierarchy.</p>
+            <h3>Thread Behavior</h3>
+            <p>Ensures that background threads spawned by child coroutines are cleaned up when the parent scope is cancelled, preventing thread leaks.</p>
+            <h3>Memory Usage</h3>
+            <p>Keeps the coroutine execution tree in memory. When a scope cancels, all resources, references, and pending continuations within its tree are cleared.</p>
+            <h3>Performance Considerations</h3>
+            <p>Reduces resource waste. When a user navigates away from a screen, cancelling the scope cancels all pending network requests and calculations launched under it.</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What are the three pillars of Structured Concurrency?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">1. **Lifecycle Scope**: Coroutines must be launched within a scope that matches a logical lifecycle.
+2. **Parent-Child Relationship**: Parent coroutines wait for all their children to complete before finishing.
+3. **Automatic Propagation**: Cancellation and failure propagate automatically up and down the execution tree.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does using <code>GlobalScope</code> violate Structured Concurrency principles, and what are the security and stability risks?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Expecting a coroutine launched using <code>GlobalScope.launch</code> to cancel when the enclosing Activity is destroyed.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 17 -->
+    <article class="topic-card">
+        <h2 id="cancellation">
+            <input type="checkbox" class="topic-chk" data-topic="17">
+            <span>17. Coroutine Cancellation</span>
+            <span class="topic-tag">Lifecycle</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>Coroutine cancellation is cooperative. When a job is cancelled, its state changes to "Cancelling", but it does not stop execution immediately. Built-in suspending functions (like <code>delay</code>, <code>yield</code>, or flow collection) check for cancellation using <code>ensureActive()</code> and throw a <code>CancellationException</code> if the job is cancelled.</p>
+            <h3>Thread Behavior</h3>
+            <p>If a coroutine is executing a non-blocking loop (e.g. math calculations) without calling suspending functions, it will ignore cancellation and keep running on its thread.</p>
+            <h3>Memory Usage</h3>
+            <p>Throwing <code>CancellationException</code> unwinds the continuation stack, releasing references to objects in scope, clearing memory references.</p>
+            <h3>Performance Considerations</h3>
+            <p>For custom loops, you must check the cancellation status explicitly using <code>isActive</code>, <code>ensureActive()</code>, or by calling <code>yield()</code> to prevent wasting CPU cycles on cancelled tasks.</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How do you make a CPU-heavy calculation loop cooperative with coroutine cancellation?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">You can check the cancellation status on every iteration using `isActive` (if in a CoroutineScope) or by calling `ensureActive()` inside the loop. Alternatively, you can call `yield()`, which yields the thread to other tasks and checks cancellation status.
+                    <pre><code class="language-kotlin">while (i < 100000) {
+    ensureActive() // Throws CancellationException if cancelled
+    performMath(i++)
+}</code></pre></div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Why must you wrap resource clean-ups inside <code>withContext(NonCancellable)</code> if they invoke suspending functions?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Catching all exceptions (using `try { ... } catch (e: Exception)`) and swallowing <code>CancellationException</code>, preventing proper cancellation flow.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 18 -->
+    <article class="topic-card">
+        <h2 id="exception-handling">
+            <input type="checkbox" class="topic-chk" data-topic="18">
+            <span>18. Exception Propagation & Handling</span>
+            <span class="topic-tag">Exception</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>Exceptions in coroutines propagate up to the root parent Job. Root coroutines handle exceptions depending on the builder used: <code>launch</code> propagates it directly to the scope's handler (crashing the app if uncaught), while <code>async</code> encapsulates the exception in the <code>Deferred</code> result, re-throwing it only when <code>await()</code> is called.</p>
+            <h3>Thread Behavior</h3>
+            <p>Uncaught exceptions cause the thread's uncaught exception handler to be called, terminating the thread (or the app process in Android).</p>
+            <h3>Memory Usage</h3>
+            <p>When an exception is thrown, the coroutine hierarchy is cancelled, releasing the memory of all siblings and parents in the execution tree.</p>
+            <h3>Performance Considerations</h3>
+            <p>Use <code>CoroutineExceptionHandler</code> to log and display errors safely. However, note that it only catches uncaught exceptions in root coroutines; it cannot prevent cancellation of sibling coroutines unless paired with <code>SupervisorJob</code>.</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Where should you declare a CoroutineExceptionHandler for it to catch exceptions correctly?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">A <code>CoroutineExceptionHandler</code> must be declared at the root of a coroutine tree (e.g. passed as a parameter to the root <code>launch</code> builder or as part of the scope's context). Passing a handler to child coroutines has no effect, as exceptions always propagate up to the parent.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does the thread safety of <code>CoroutineExceptionHandler</code> differ from standard JVM thread handlers?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Wrapping a child <code>launch</code> in a try-catch block and expecting it to prevent the parent scope from cancelling (the exception is propagated to the parent before the catch block can run).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 19 -->
+    <article class="topic-card">
+        <h2 id="flow">
+            <input type="checkbox" class="topic-chk" data-topic="19">
+            <span>19. Flow (Cold Streams)</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>A Kotlin <code>Flow</code> is a cold stream representation. The code inside the flow builder does not execute until a terminal operator (like `collect`) is invoked. It uses suspension to support backpressure naturally: the emitter suspends if the collector is busy.</p>
+            <h3>Thread Behavior</h3>
+            <p>Flow collection is sequential. By default, both the emission and collection execute on the thread of the calling coroutine. The execution dispatcher of upstream operators can be modified using the <code>flowOn</code> operator.</p>
+            <h3>Memory Usage</h3>
+            <p>Each collector allocates a new coroutine state block. Since it is cold, no buffer is allocated unless explicitly requested via `buffer()` or `conflate()`.</p>
+            <h3>Performance Considerations</h3>
+            <p>Very memory-efficient for pipeline transformations. However, using <code>flowOn</code> allocations spawns a channel buffer internally, introducing thread-crossing overhead.</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Explain how the flowOn operator affects threading in a Flow pipeline.</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The <code>flowOn</code> operator changes the context (dispatcher) of all *upstream* operators in the pipeline.
+                    <pre><code class="language-kotlin">flow { emit(1) } // Runs on IO
+    .flowOn(Dispatchers.IO)
+    .map { it * 2 } // Runs on Main
+    .flowOn(Dispatchers.Main)
+    .collect { ... } // Runs on the collector's context</code></pre></div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does Flow implement thread-confinement validation internally during emission?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Attempting to emit values from a different thread using `withContext` inside a `flow` block (causes an IllegalStateException; use `callbackFlow` or `channelFlow` instead).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 20 -->
+    <article class="topic-card">
+        <h2 id="stateflow">
+            <input type="checkbox" class="topic-chk" data-topic="20">
+            <span>20. StateFlow</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>StateFlow</code> is a state-holder hot flow that emits the current state and new updates to its collectors. It requires an initial value, replays the latest value to new subscribers, and deduplicates consecutive duplicate values (conflates updates).</p>
+            <h3>Thread Behavior</h3>
+            <p>Updating the `value` property of <code>MutableStateFlow</code> is thread-safe and can be done from any thread. Collectors are notified concurrently via dispatcher pools.</p>
+            <h3>Memory Usage</h3>
+            <p>Maintains a single reference to the current state in memory. Deduplication prevents unnecessary recompositions and allocations in the UI layer.</p>
+            <h3>Performance Considerations</h3>
+            <p>Perfect for UI state representations (like MVVM states). The conflation behavior ensures that if the state updates faster than the UI can render, the UI only receives the latest state, preventing frame drops.</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What are the key differences between StateFlow and LiveData?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">1. **Initial Value**: <code>StateFlow</code> requires an initial value; <code>LiveData</code> does not.
+2. **Lifecycle awareness**: <code>LiveData</code> is bound to Android Lifecycle; <code>StateFlow</code> is pure Kotlin and requires helper extensions (like `repeatOnLifecycle`) to bind to Android UI lifecycles.
+3. **Deduplication**: <code>StateFlow</code> uses equality check to drop duplicate updates; <code>LiveData</code> emits all updates regardless of equality.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does the lock-free state allocation algorithm of StateFlow compare to standard synchronized blocks?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Updating StateFlow with the same object instance after mutating a property (equality check will match, preventing UI updates; state classes should be immutable data classes).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 21 -->
+    <article class="topic-card">
+        <h2 id="sharedflow">
+            <input type="checkbox" class="topic-chk" data-topic="21">
+            <span>21. SharedFlow</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p><code>SharedFlow</code> is a hot flow designed to broadcast events to multiple collectors. It does not require an initial value, can buffer elements, and can replay a configured number of past emissions to new subscribers.</p>
+            <h3>Thread Behavior</h3>
+            <p>Emissions are thread-safe. If the buffer is full, the emitter suspends or drops values according to the configured <code>BufferOverflow</code> strategy.</p>
+            <h3>Memory Usage</h3>
+            <p>Allocates a replay buffer array based on the `replay` parameter. Keeping a large replay size increases memory overhead.</p>
+            <h3>Performance Considerations</h3>
+            <p>Ideal for one-time events (navigation, toast alerts, dialog triggers). Model shared pipelines using <code>shareIn</code> to share expensive network streams among multiple observers.</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What is the risk of using a SharedFlow with replay = 1 to handle navigation events?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Setting <code>replay = 1</code> causes the SharedFlow to act like a state container. When the screen rotates, the activity or fragment re-subscribes, receives the cached navigation event again, and navigates twice. Navigation events should be consumed and cleared, or handled using <code>replay = 0</code>.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain how the <code>extraBufferCapacity</code> parameter affects backpressure of slow collectors in SharedFlow.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using a standard StateFlow instead of SharedFlow for transient events, causing UI state bugs.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 22 -->
+    <article class="topic-card">
+        <h2 id="channels">
+            <input type="checkbox" class="topic-chk" data-topic="22">
+            <span>22. Channels</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>A <code>Channel</code> provides a synchronization queue for transferring a stream of values between coroutines. Unlike Flows, Channels are hot, and their elements are consumed point-to-point: each element is delivered to exactly one receiver.</p>
+            <h3>Thread Behavior</h3>
+            <p>Safe for concurrent access. Emitters suspend if the channel is full, and receivers suspend if the channel is empty. The operations are managed by thread-safe wait queues.</p>
+            <h3>Memory Usage</h3>
+            <p>Uses an array buffer to store items. Buffer size is defined by the channel type (e.g. Rendezvous has no buffer, allocating nothing until a sender and receiver meet).</p>
+            <h3>Performance Considerations</h3>
+            <p>Perfect for work queues, producer-consumer architectures, and background event processing. However, they are not suited for UI data distribution because they do not support multiple observers (broadcast behavior).</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What is the difference between a Channel and a Flow?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">A <code>Flow</code> is cold and unicast: the producer code executes on-demand for every collector. A <code>Channel</code> is hot and multicast-inconsistent: the producer runs independently, and elements are consumed only once. If multiple coroutines listen to a channel, each element is processed by a single worker, which behaves like a queue.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Why does <code>trySend</code> fail if a channel is in a suspended state waiting for a consumer?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using a <code>Channel</code> to dispatch state updates to a UI screen with multiple views, resulting in partial updates.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 23 -->
+    <article class="topic-card">
+        <h2 id="channel-types">
+            <input type="checkbox" class="topic-chk" data-topic="23">
+            <span>23. Channel Communication Types</span>
+            <span class="topic-tag">Streams</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Internal Working</h3>
+            <p>Kotlin provides four main channel implementations based on buffering strategies:
+            <ul>
+                <li><strong>Rendezvous:</strong> Capacity is 0. The sender suspends until a receiver retrieves the element.</li>
+                <li><strong>Buffered:</strong> Has a fixed buffer capacity. Senders only suspend once the buffer is full.</li>
+                <li><strong>Conflated:</strong> Capacity is 1. The sender never suspends; new elements overwrite older ones (receiver only gets the latest).</li>
+                <li><strong>Unlimited:</strong> Has an linked-list buffer. Senders never suspend, but memory can be exhausted if the receiver is too slow (OOM risk).</li>
+            </ul></p>
+            <h3>Thread Behavior</h3>
+            <p>Coordination uses CAS locks and atomic state transitions to pause and resume sender/receiver continuations across execution pools.</p>
+            <h3>Memory Usage</h3>
+            <p>Rendezvous is allocation-free. Unlimited allocates memory dynamically, risking memory exhaustion if unchecked.</p>
+            <h3>Performance Considerations</h3>
+            <p>Use <code>Conflated</code> for high-frequency real-time sensors (like GPS location updates) where only the latest coordinate matters. Use <code>Buffered</code> for transactional message queues.</p>
+            <h3>Common Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Compare Rendezvous and Conflated channels in terms of suspending behavior.</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">In a <code>Rendezvous</code> channel, the sender suspends immediately upon calling <code>send()</code> until a receiver calls <code>receive()</code>. In a <code>Conflated</code> channel, the sender never suspends. If a new value is sent before the previous one is received, the channel drops the older value and keeps the new one.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does the compiler implement the queue list inside Unlimited Channel internally?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using <code>Channel.UNLIMITED</code> for processing high-volume analytical events, causing OutOfMemoryError under peak traffic.</div>
                 </div>
             </div>
         </div>

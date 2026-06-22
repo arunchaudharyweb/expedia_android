@@ -710,4 +710,240 @@ class UploadQueueTest {
             </div>
         </div>
     </article>
+
+    <!-- PROBLEM 7 -->
+    <article class="topic-card">
+        <h2 id="live-solid-refactoring">
+            <input type="checkbox" class="topic-chk" data-topic="7">
+            <span>Problem 7: SOLID Clean Code Refactoring</span>
+            <span class="topic-tag">SOLID</span>
+        </h2>
+        <div class="topic-body">
+            <p><strong>Interviewer Prompt:</strong></p>
+            <p class="alert-note">
+                "The following class is highly coupled, violates Single Responsibility Principle, and is untestable because it instantiates its own dependencies. Refactor it using SOLID principles and construct a mockable implementation."
+            </p>
+
+            <div class="lc-section naive">
+                <div class="lc-title naive">Naive Solution & Drawbacks</div>
+                <pre><code class="language-kotlin">// NAIVE: Untestable monolith class
+class HotelBookingService {
+    private val db = RoomDatabase.Builder().build() // Coupled to DB
+    private val api = Retrofit.Builder().build().create(Api::class.java) // Coupled to API
+
+    fun book(hotelId: String, user: String) {
+        // Violates Single Responsibility: does logging, DB write, net call, and email
+        println("Booking hotel $hotelId for $user")
+        api.postBooking(hotelId, user)
+        db.saveBooking(hotelId, user)
+        // Hardcoded email client send
+        EmailClient.send("Success", user)
+    }
+}</code></pre>
+            </div>
+
+            <div class="lc-section solution">
+                <div class="lc-title solution">Clean Kotlin Solution</div>
+                <pre><code class="language-kotlin">// 1. Define clean interfaces (Interface Segregation & Dependency Inversion)
+interface BookingRepository {
+    suspend fun saveBookingLocal(hotelId: String, userId: String)
+    suspend fun confirmBookingRemote(hotelId: String, userId: String)
+}
+
+interface NotificationSender {
+    suspend fun sendEmail(message: String, email: String)
+}
+
+// 2. Refactored class using Constructor Injection (Single Responsibility & Open-Closed)
+class CleanBookingService(
+    private val repository: BookingRepository,
+    private val notifier: NotificationSender
+) {
+    suspend fun executeBooking(hotelId: String, userId: String, userEmail: String): Boolean {
+        return try {
+            repository.confirmBookingRemote(hotelId, userId)
+            repository.saveBookingLocal(hotelId, userId)
+            notifier.sendEmail("Booking confirmed for $hotelId", userEmail)
+            true
+        } catch (e: Exception) {
+            false
+        }
+    }
+}</code></pre>
+            </div>
+
+            <div class="lc-section tests">
+                <div class="lc-title tests">Unit Tests</div>
+                <pre><code class="language-kotlin">import io.mockk.*
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert
+import org.junit.Test
+
+class CleanBookingServiceTest {
+    private val repository = mockk<BookingRepository>()
+    private val notifier = mockk<NotificationSender>()
+    private val service = CleanBookingService(repository, notifier)
+
+    @Test
+    fun `test successful booking saves data and triggers email`() = runTest {
+        // Setup mocks
+        coEvery { repository.confirmBookingRemote("1", "U") } just Runs
+        coEvery { repository.saveBookingLocal("1", "U") } just Runs
+        coEvery { notifier.sendEmail(any(), "test@expedia.com") } just Runs
+
+        val result = service.executeBooking("1", "U", "test@expedia.com")
+
+        Assert.assertTrue(result)
+        coVerifySequence {
+            repository.confirmBookingRemote("1", "U")
+            repository.saveBookingLocal("1", "U")
+            notifier.sendEmail("Booking confirmed for 1", "test@expedia.com")
+        }
+    }
+}</code></pre>
+            </div>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label followup">Follow-Up Questions</div>
+                    <div class="qa-text">
+                        <ol>
+                            <li>How does this refactoring satisfy the Dependency Inversion Principle (DIP)?</li>
+                            <li>How does separating the notification channel into an interface support Open-Closed Principle (OCP)? (We can add SMS or push alerts without modifying the booking engine).</li>
+                            <li>How do you mock or fake specific failure cases in the repository?</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- PROBLEM 8 -->
+    <article class="topic-card">
+        <h2 id="live-fake-repository">
+            <input type="checkbox" class="topic-chk" data-topic="8">
+            <span>Problem 8: Unit Testing with Fake Repository</span>
+            <span class="topic-tag">Testing</span>
+        </h2>
+        <div class="topic-body">
+            <p><strong>Interviewer Prompt:</strong></p>
+            <p class="alert-note">
+                "Write a unit test suite for a ViewModel that fetches travel deals. Instead of using MockK, implement a Fake Repository to simulate network latency, successes, and resource errors, ensuring your test suite is reliable."
+            </p>
+
+            <div class="lc-section naive">
+                <div class="lc-title naive">Naive Solution & Drawbacks</div>
+                <p>
+                    A naive solution relies on complex MockK stubbing for every scenario, which makes tests rigid and difficult to refactor when implementation details change.
+                </p>
+                <pre><code class="language-kotlin">// NAIVE: Complex MockK setups
+val mockRepo = mockk<DealsRepository>()
+coEvery { mockRepo.getDeals() } throws IOException()
+// Hard to simulate state mutations or dynamic in-memory caches</code></pre>
+            </div>
+
+            <div class="lc-section solution">
+                <div class="lc-title solution">Clean Kotlin Solution</div>
+                <pre><code class="language-kotlin">// 1. Repository Interface
+interface DealsRepository {
+    suspend fun getDeals(): List<String>
+}
+
+// 2. Fake Repository Implementation (Stateful Fake)
+class FakeDealsRepository : DealsRepository {
+    private val deals = mutableListOf<String>()
+    var shouldThrowError = false
+
+    fun addDeals(newList: List<String>) {
+        deals.clear()
+        deals.addAll(newList)
+    }
+
+    override suspend fun getDeals(): List<String> {
+        if (shouldThrowError) throw Exception("Network failed")
+        return deals
+    }
+}
+
+// 3. ViewModel using constructor injection
+class DealsViewModel(private val repository: DealsRepository) : ViewModel() {
+    private val _uiState = MutableStateFlow<DealsUiState>(DealsUiState.Loading)
+    val uiState = _uiState.asStateFlow()
+
+    fun fetchDeals() {
+        viewModelScope.launch {
+            _uiState.value = DealsUiState.Loading
+            try {
+                val list = repository.getDeals()
+                _uiState.value = DealsUiState.Success(list)
+            } catch (e: Exception) {
+                _uiState.value = DealsUiState.Error(e.message ?: "Failed")
+            }
+        }
+    }
+}
+
+sealed interface DealsUiState {
+    object Loading : DealsUiState
+    data class Success(val list: List<String>) : DealsUiState
+    data class Error(val message: String) : DealsUiState
+}</code></pre>
+            </div>
+
+            <div class="lc-section tests">
+                <div class="lc-title tests">Unit Tests</div>
+                <pre><code class="language-kotlin">import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.runTest
+import org.junit.Assert
+import org.junit.Test
+import app.cash.turbine.test
+
+class DealsViewModelTest {
+    private val fakeRepository = FakeDealsRepository()
+    private val viewModel = DealsViewModel(fakeRepository)
+
+    @Test
+    fun `test loading fetches deals successfully`() = runTest {
+        fakeRepository.addDeals(listOf("Deal 1", "Deal 2"))
+        
+        viewModel.uiState.test {
+            // Initial state check
+            Assert.assertEquals(DealsUiState.Loading, awaitItem())
+            
+            viewModel.fetchDeals()
+            
+            // Success mapping check
+            Assert.assertEquals(DealsUiState.Success(listOf("Deal 1", "Deal 2")), awaitItem())
+        }
+    }
+
+    @Test
+    fun `test loading emits error when repository throws exception`() = runTest {
+        fakeRepository.shouldThrowError = true
+        
+        viewModel.uiState.test {
+            Assert.assertEquals(DealsUiState.Loading, awaitItem())
+            
+            viewModel.fetchDeals()
+            
+            Assert.assertEquals(DealsUiState.Error("Network failed"), awaitItem())
+        }
+    }
+}</code></pre>
+            </div>
+
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label followup">Follow-Up Questions</div>
+                    <div class="qa-text">
+                        <ol>
+                            <li>Why are fakes preferred over mocks in large-scale domain logic testing?</li>
+                            <li>How do you simulate slow network responses (latency) using this Fake Repository? (Add a configurable delay inside the fake's method).</li>
+                            <li>What is the difference between Fakes, Mocks, and Stubs in software testing?</li>
+                        </ol>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </article>
 </div>

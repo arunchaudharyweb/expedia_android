@@ -1,0 +1,205 @@
+<div class="section-content">
+    <h1>Section 6: Android Architecture</h1>
+    <div class="section-meta">
+        <span>⏱ 15 min read</span>
+        <span>✓ Part 2 Design</span>
+    </div>
+    
+    <p class="section-intro">
+        Modern architectural paradigms, structural design patterns, data flows, decoupling principles, and dependency injection implementations for enterprise-grade mobile systems.
+    </p>
+
+    <!-- TOPIC 1 -->
+    <article class="topic-card">
+        <h2 id="mvvm">
+            <input type="checkbox" class="topic-chk" data-topic="1">
+            <span>1. MVVM (Model-View-ViewModel)</span>
+            <span class="topic-tag">Architecture</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Pros and Cons</h3>
+            <p><strong>Pros:</strong> Separates UI rendering from business logic, leverages lifecycle-aware components (ViewModel), reduces boilerplate compared to MVP, and supports reactive data binding.
+            <br><strong>Cons:</strong> Complex screens can lead to bloated ViewModels (god classes), and managing multiple UI state flows can become difficult if not unified.</p>
+            <h3>Testability</h3>
+            <p>High testability. ViewModels do not contain Android framework references, allowing them to be tested using standard JVM unit tests with mocked repositories.</p>
+            <h3>Scalability</h3>
+            <p>Scales well for medium-sized applications. However, as the number of features grows, sharing state between ViewModels requires clear repository caching or coordination layers.</p>
+            <h3>Real Production Examples</h3>
+            <p>A hotel details page. The View observes a <code>hotelDetailsState</code> flow exposed by the ViewModel. When user selects a date, the ViewModel updates the state, and the UI recomposes automatically.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How does MVVM differ from MVP (Model-View-Presenter)?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">In MVP, the Presenter holds a direct reference to the View interface, directing updates via explicit function calls. In MVVM, the ViewModel has no reference to the View; instead, it exposes state properties (such as Flow or LiveData), and the View observes these properties. This decouples the presentation layer from specific UI implementations.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does the <code>viewModelScope</code> handle automatic cancellation of background tasks when the activity is finished?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Exposing mutable states (like <code>MutableStateFlow</code>) directly to the View, allowing views to modify the state directly instead of routing actions through the ViewModel.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 2 -->
+    <article class="topic-card">
+        <h2 id="mvi">
+            <input type="checkbox" class="topic-chk" data-topic="2">
+            <span>2. MVI (Model-View-Intent)</span>
+            <span class="topic-tag">Architecture</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Pros and Cons</h3>
+            <p><strong>Pros:</strong> Unidirectional Data Flow (UDF), single immutable state container representing the screen, predictable transitions, and simplified debugging using state logs.
+            <br><strong>Cons:</strong> High boilerplate overhead for simple screens, and memory allocations for state copies on every update.</p>
+            <h3>Testability</h3>
+            <p>Excellent testability. State transitions can be tested by sending Intents to a state reducer and asserting the resulting state outputs.</p>
+            <h3>Scalability</h3>
+            <p>Highly scalable for complex, multi-state screen flows. It prevents state conflicts (race conditions) by funneling all mutations through a single reducer queue.</p>
+            <h3>Real Production Examples</h3>
+            <p>An Expedia search checkout screen. User interactions (e.g. input voucher, change payment method) are dispatched as Intents (events). The reducer combines the current state and intent, outputting a new, single immutable CheckoutState.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Explain Unidirectional Data Flow (UDF) inside MVI.</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">UDF means data flows in a single circular path: 1. The View dispatches user intents (e.g. click button). 2. The ViewModel processes the intent, queries repositories if needed, and feeds the action to a Reducer. 3. The Reducer creates a new immutable State based on the previous State and current action. 4. The View observes and renders this new State. This prevents out-of-sync states.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How do you prevent state duplication overhead when copy-allocating large immutable data classes?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Treating transient events (like toast alerts or navigation) as persistent state properties inside the screen's main state flow, causing duplicate alerts on rotation.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 3 -->
+    <article class="topic-card">
+        <h2 id="clean-architecture">
+            <input type="checkbox" class="topic-chk" data-topic="3">
+            <span>3. Clean Architecture</span>
+            <span class="topic-tag">Architecture</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Pros and Cons</h3>
+            <p><strong>Pros:</strong> Strict separation of concerns, decouples core business logic from framework libraries (like Room or Retrofit), and makes codebase maintenance straightforward.
+            <br><strong>Cons:</strong> Overkill for small projects, introduces a large number of model mappings and interface wrapper classes.</p>
+            <h3>Testability</h3>
+            <p>Outstanding testability. Business logic in Use Cases contains no platform or framework references, allowing fast unit testing on the JVM.</p>
+            <h3>Scalability</h3>
+            <p>Perfect for large, multi-module enterprise codebases. Features can be developed independently inside separate domain and data modules.</p>
+            <h3>Real Production Examples</h3>
+            <p>A Booking module. The View notifies the ViewModel, which calls the <code>ConfirmBookingUseCase</code> (domain layer). The Use Case coordinates data verification and updates the repository layer, completely isolated from network or DB frameworks.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What are the three core layers of Clean Architecture, and what are their dependencies?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">1. **Presentation Layer**: ViewModels and UI views. Depends on Domain Layer.
+2. **Domain Layer**: Core business entities and Use Cases. Depends on nothing (independent).
+3. **Data Layer**: Repositories, database (Room), and network (Retrofit) clients. Depends on Domain Layer. The dependency rule specifies that source code dependencies must point inward toward the Domain Layer.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does Dependency Inversion allow the Domain layer to define repository interfaces implemented in the Data layer?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Allowing Android platform dependencies (like Context or LiveData) to leak into the Domain layer Use Cases.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 4 -->
+    <article class="topic-card">
+        <h2 id="repository-pattern">
+            <input type="checkbox" class="topic-chk" data-topic="4">
+            <span>4. Repository Pattern</span>
+            <span class="topic-tag">Design Pattern</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Pros and Cons</h3>
+            <p><strong>Pros:</strong> Decouples data sources from domain logic, acts as a single source of truth, manages caching strategies, and coordinates network and database synchronization.
+            <br><strong>Cons:</strong> Adds minor implementation overhead, and can become a bottleneck if too many caching rules are implemented in a single class.</p>
+            <h3>Testability</h3>
+            <p>Allows easy testing of domain logic. By mocking the repository interface, you can simulate network errors, disk latency, or database misses without launching network services.</p>
+            <h3>Scalability</h3>
+            <p>Essential for offline-first applications, as it provides a clean interface that hides changes in data sources (e.g. migrating database schema or changing networking libraries).</p>
+            <h3>Real Production Examples</h3>
+            <p>Expedia Hotel details repository. When requested, <code>HotelRepository</code> first returns cached data from a local Room database, while simultaneously launching a background network fetch. Once complete, it writes to Room, updating the UI stream.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">Why should a Repository hide its data sources, and how does it implement a single source of truth?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">A repository should hide data sources to decouple business logic from data retrieval mechanisms. It implements a single source of truth by directing all reads through a local database cache (like Room). Network updates write directly to the database; the domain layer collects state changes from the database stream, ensuring a single, consistent state representation.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How do you implement an offline-first caching policy with expiration times inside a Repository?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Exposing database entities (Room models) or network models (Retrofit GSON objects) directly to the presentation layer instead of mapping them to domain models.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 5 -->
+    <article class="topic-card">
+        <h2 id="dependency-injection">
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. Dependency Injection (DI Principles)</span>
+            <span class="topic-tag">DI</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Pros and Cons</h3>
+            <p><strong>Pros:</strong> Promotes loose coupling, facilitates mock-based unit testing, defines clear scopes and lifecycles for shared objects, and prevents boilerplate code.
+            <br><strong>Cons:</strong> Learning curve, compile-time overhead (for annotation processors), and complex dependency configurations can be difficult to debug.</p>
+            <h3>Testability</h3>
+            <p>Crucial for testability. Allows replacing real network clients or database instances with mock or fake implementations during testing, avoiding real-world side effects.</p>
+            <h3>Scalability</h3>
+            <p>Crucial for large codebases. Allows developers to modularize the app, injecting mock components in development modes to compile and test individual features quickly.</p>
+            <h3>Real Production Examples</h3>
+            <p>A network client. Instead of each repository instantiating its own <code>OkHttpClient</code>, the network client is declared as a singleton inside a DI module and injected into all repository constructors.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What is the difference between Constructor Injection and Field Injection, and when is each used?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Constructor Injection injects dependencies via the class constructor. It is preferred because it makes dependencies explicit and allows instantiating the class without a DI framework during testing. Field Injection is used when the class is instantiated by the Android platform framework (like Activities or Fragments). The DI framework injects dependencies into annotated fields after initialization.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Compare Dagger 2's compile-time graph validation with runtime service locator patterns.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Instantiating singletons manually (e.g. using `object` singletons or static fields), which hardcodes dependencies and complicates unit testing.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 6 -->
+    <article class="topic-card">
+        <h2 id="hilt">
+            <input type="checkbox" class="topic-chk" data-topic="6">
+            <span>6. Hilt (Jetpack DI implementation)</span>
+            <span class="topic-tag">DI</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Pros and Cons</h3>
+            <p><strong>Pros:</strong> Built-in integration with Jetpack components, pre-defined components and lifecycles (Activity, Fragment, ViewModel), and simplified Dagger configuration.
+            <br><strong>Cons:</strong> Adds build-time overhead, and custom scopes require additional configuration.</p>
+            <h3>Testability</h3>
+            <p>Provides helper tools (like <code>HiltAndroidTest</code>) to swap dependencies in integration tests, allowing you to test UI components with fake data sources.</p>
+            <h3>Scalability</h3>
+            <p>Simplifies dependency configuration in multi-module projects, allowing modules to expose their dependencies automatically to the main app graph.</p>
+            <h3>Real Production Examples</h3>
+            <p>An Expedia application. The ViewModel constructor is annotated with <code>@HiltViewModel</code>, and Hilt automatically injects the repository dependency at runtime without requiring custom factory boilerplate.</p>
+            <h3>Interview Questions</h3>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">What is the role of @InstallIn annotation in Hilt modules?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The <code>@InstallIn</code> annotation tells Hilt which standard Dagger component the module's dependencies should be bound to. For example, <code>@InstallIn(SingletonComponent::class)</code> binds dependencies to the application-level lifecycle (singleton), while <code>@InstallIn(ActivityComponent::class)</code> limits dependencies to the lifecycle of individual activities.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain the difference between <code>@Binds</code> and <code>@Provides</code> in a Hilt module.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Failing to annotate the custom Application class with <code>@HiltAndroidApp</code>, causing compilation errors or runtime injection failures.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+</div>

@@ -50,10 +50,10 @@
             </div>
             
             <nav class="sidebar-nav">
-                <!-- Round 1 Section Group -->
+                <!-- Part 1: Platform Core (R1) -->
                 <div class="nav-group">
                     <div class="nav-group-title">
-                        <span>Round 1: Technical Deep Dive</span>
+                        <span>Part 1: Platform Core (R1)</span>
                         <span class="nav-group-progress" id="r1-progress">0%</span>
                     </div>
                     <ul class="nav-list">
@@ -62,17 +62,8 @@
                                 <span class="nav-link-meta">
                                     <input type="checkbox" id="chk-r1-kotlin" class="section-chk" data-section="r1-kotlin" onclick="event.stopPropagation();">
                                 </span>
-                                <span class="nav-link-title">Kotlin Fundamentals</span>
-                                <span class="nav-link-time">15 min read</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="#r1-android" class="nav-link" data-section="r1-android">
-                                <span class="nav-link-meta">
-                                    <input type="checkbox" id="chk-r1-android" class="section-chk" data-section="r1-android" onclick="event.stopPropagation();">
-                                </span>
-                                <span class="nav-link-title">Android Fundamentals</span>
-                                <span class="nav-link-time">20 min read</span>
+                                <span class="nav-link-title">Kotlin Complete Guide</span>
+                                <span class="nav-link-time">35 min read</span>
                             </a>
                         </li>
                         <li>
@@ -80,8 +71,8 @@
                                 <span class="nav-link-meta">
                                     <input type="checkbox" id="chk-r1-coroutines" class="section-chk" data-section="r1-coroutines" onclick="event.stopPropagation();">
                                 </span>
-                                <span class="nav-link-title">Coroutines Deep Dive</span>
-                                <span class="nav-link-time">18 min read</span>
+                                <span class="nav-link-title">Coroutines & Concurrency</span>
+                                <span class="nav-link-time">22 min read</span>
                             </a>
                         </li>
                         <li>
@@ -93,23 +84,50 @@
                                 <span class="nav-link-time">12 min read</span>
                             </a>
                         </li>
+                        <li>
+                            <a href="#r1-compose" class="nav-link" data-section="r1-compose">
+                                <span class="nav-link-meta">
+                                    <input type="checkbox" id="chk-r1-compose" class="section-chk" data-section="r1-compose" onclick="event.stopPropagation();">
+                                </span>
+                                <span class="nav-link-title">Jetpack Compose</span>
+                                <span class="nav-link-time">20 min read</span>
+                            </a>
+                        </li>
+                        <li>
+                            <a href="#r1-android" class="nav-link" data-section="r1-android">
+                                <span class="nav-link-meta">
+                                    <input type="checkbox" id="chk-r1-android" class="section-chk" data-section="r1-android" onclick="event.stopPropagation();">
+                                </span>
+                                <span class="nav-link-title">Android Platform & Internals</span>
+                                <span class="nav-link-time">25 min read</span>
+                            </a>
+                        </li>
                     </ul>
                 </div>
                 
-                <!-- Round 2 Section Group -->
+                <!-- Part 2: Design & Implementation (R2) -->
                 <div class="nav-group">
                     <div class="nav-group-title">
-                        <span>Round 2: Architecture & Live Code</span>
+                        <span>Part 2: Design & Coding (R2)</span>
                         <span class="nav-group-progress" id="r2-progress">0%</span>
                     </div>
                     <ul class="nav-list">
+                        <li>
+                            <a href="#r2-architecture" class="nav-link" data-section="r2-architecture">
+                                <span class="nav-link-meta">
+                                    <input type="checkbox" id="chk-r2-architecture" class="section-chk" data-section="r2-architecture" onclick="event.stopPropagation();">
+                                </span>
+                                <span class="nav-link-title">Android Architecture</span>
+                                <span class="nav-link-time">15 min read</span>
+                            </a>
+                        </li>
                         <li>
                             <a href="#r2-solution-design" class="nav-link" data-section="r2-solution-design">
                                 <span class="nav-link-meta">
                                     <input type="checkbox" id="chk-r2-solution-design" class="section-chk" data-section="r2-solution-design" onclick="event.stopPropagation();">
                                 </span>
-                                <span class="nav-link-title">Solution Design</span>
-                                <span class="nav-link-time">25 min read</span>
+                                <span class="nav-link-title">SDE-2 Solution Design</span>
+                                <span class="nav-link-time">30 min read</span>
                             </a>
                         </li>
                         <li>
@@ -117,26 +135,8 @@
                                 <span class="nav-link-meta">
                                     <input type="checkbox" id="chk-r2-live-coding" class="section-chk" data-section="r2-live-coding" onclick="event.stopPropagation();">
                                 </span>
-                                <span class="nav-link-title">Live Coding Problems</span>
-                                <span class="nav-link-time">30 min read</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="#r2-testing" class="nav-link" data-section="r2-testing">
-                                <span class="nav-link-meta">
-                                    <input type="checkbox" id="chk-r2-testing" class="section-chk" data-section="r2-testing" onclick="event.stopPropagation();">
-                                </span>
-                                <span class="nav-link-title">Code Testability</span>
-                                <span class="nav-link-time">12 min read</span>
-                            </a>
-                        </li>
-                        <li>
-                            <a href="#r2-clean-code" class="nav-link" data-section="r2-clean-code">
-                                <span class="nav-link-meta">
-                                    <input type="checkbox" id="chk-r2-clean-code" class="section-chk" data-section="r2-clean-code" onclick="event.stopPropagation();">
-                                </span>
-                                <span class="nav-link-title">Clean Code Patterns</span>
-                                <span class="nav-link-time">15 min read</span>
+                                <span class="nav-link-title">Live Coding Prep</span>
+                                <span class="nav-link-time">35 min read</span>
                             </a>
                         </li>
                     </ul>

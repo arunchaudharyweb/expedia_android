@@ -74,14 +74,14 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Section configurations for metadata calculation
     const sectionConfigs = {
-        'r1-kotlin': { title: 'Kotlin Fundamentals', path: 'sections/r1-kotlin.html', count: 24 },
-        'r1-android': { title: 'Android Fundamentals', path: 'sections/r1-android.html', count: 13 },
-        'r1-coroutines': { title: 'Coroutines Deep Dive', path: 'sections/r1-coroutines.html', count: 10 },
+        'r1-kotlin': { title: 'Kotlin Fundamentals', path: 'sections/r1-kotlin.html', count: 31 },
+        'r1-coroutines': { title: 'Coroutines & Concurrency', path: 'sections/r1-coroutines.html', count: 23 },
         'r1-reactive': { title: 'Reactive Programming', path: 'sections/r1-reactive.html', count: 8 },
-        'r2-solution-design': { title: 'Solution Design', path: 'sections/r2-solution-design.html', count: 4 },
-        'r2-live-coding': { title: 'Live Coding Problems', path: 'sections/r2-live-coding.html', count: 6 },
-        'r2-testing': { title: 'Code Testability', path: 'sections/r2-testing.html', count: 5 },
-        'r2-clean-code': { title: 'Clean Code Patterns', path: 'sections/r2-clean-code.html', count: 6 },
+        'r1-compose': { title: 'Jetpack Compose', path: 'sections/r1-compose.html', count: 16 },
+        'r1-android': { title: 'Android Platform & Internals', path: 'sections/r1-android.html', count: 18 },
+        'r2-architecture': { title: 'Android Architecture', path: 'sections/r2-architecture.html', count: 6 },
+        'r2-solution-design': { title: 'SDE-2 Solution Design', path: 'sections/r2-solution-design.html', count: 9 },
+        'r2-live-coding': { title: 'Live Coding Prep', path: 'sections/r2-live-coding.html', count: 8 },
         'questions': { title: '60Q Practice Bank', path: 'sections/questions.html', count: 1 }
     };
 
@@ -269,8 +269,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function calculateMetrics() {
-        // Calculate Round 1 completion percentage
-        const r1Sections = ['r1-kotlin', 'r1-android', 'r1-coroutines', 'r1-reactive'];
+        // Calculate Round 1 completion percentage (Part 1)
+        const r1Sections = ['r1-kotlin', 'r1-coroutines', 'r1-reactive', 'r1-compose', 'r1-android'];
         let r1Total = 0, r1Checked = 0;
 
         r1Sections.forEach(secId => {
@@ -285,8 +285,8 @@ document.addEventListener('DOMContentLoaded', () => {
         const r1Pct = Math.round((r1Checked / r1Total) * 100) || 0;
         document.getElementById('r1-progress').innerText = `${r1Pct}%`;
 
-        // Calculate Round 2 completion percentage
-        const r2Sections = ['r2-solution-design', 'r2-live-coding', 'r2-testing', 'r2-clean-code'];
+        // Calculate Round 2 completion percentage (Part 2)
+        const r2Sections = ['r2-architecture', 'r2-solution-design', 'r2-live-coding'];
         let r2Total = 0, r2Checked = 0;
 
         r2Sections.forEach(secId => {
