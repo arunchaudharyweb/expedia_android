@@ -78,8 +78,8 @@ document.addEventListener('DOMContentLoaded', () => {
         'r1-coroutines': { title: 'Coroutines & Concurrency', path: 'sections/r1-coroutines.html', count: 10 },
         'r1-reactive': { title: 'Reactive Programming', path: 'sections/r1-reactive.html', count: 4 },
         'r1-compose': { title: 'Jetpack Compose', path: 'sections/r1-compose.html', count: 8 },
-        'r1-android': { title: 'Android Platform & Internals', path: 'sections/r1-android.html', count: 10 },
-        'r2-architecture': { title: 'Android Architecture', path: 'sections/r2-architecture.html', count: 6 },
+        'r1-android': { title: 'Android Platform & Internals', path: 'sections/r1-android.html', count: 12 },
+        'r2-architecture': { title: 'Android Architecture', path: 'sections/r2-architecture.html', count: 8 },
         'r2-solution-design': { title: 'SDE-2 Solution Design', path: 'sections/r2-solution-design.html', count: 9 },
         'r2-live-coding': { title: 'Live Coding Prep', path: 'sections/r2-live-coding.html', count: 8 },
         'questions': { title: '60Q Practice Bank', path: 'sections/questions.html', count: 1 }

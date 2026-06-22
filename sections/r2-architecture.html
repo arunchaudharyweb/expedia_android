@@ -202,4 +202,66 @@
             </div>
         </div>
     </article>
+
+    <!-- TOPIC 7 -->
+    <article class="topic-card">
+        <h2 id="testing-strategies">
+            <input type="checkbox" class="topic-chk" data-topic="7">
+            <span>7. Comprehensive Test Strategies (Unit, UI, Snapshot, & Integration)</span>
+            <span class="topic-tag">Testing</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Unit Tests</strong>: Verify business logic in isolation. Use stateful Fakes (recommended over MockK stubbing for complex repositories) and run on the local JVM.</li>
+                <li><strong>UI/Compose Tests</strong>: Validate UI state and interaction. Use <code>createComposeRule()</code> or <code>createAndroidComposeRule()</code> to locate nodes via semantics and run gestures.</li>
+                <li><strong>Snapshot Tests</strong>: Render components to static image files and perform pixel-by-pixel comparisons against reference baselines to prevent styling regressions. Run on local JVM via libraries like <strong>Paparazzi</strong> or **Showkase** (no emulator needed).</li>
+                <li><strong>Integration Tests</strong>: Validate interactions between components (e.g., ViewModel interacting with local database). Use Hilt test runners (`HiltAndroidRule`) to inject dependencies.</li>
+            </ul>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How do you verify the behavior of a Jetpack Compose UI component that triggers an asynchronous operation?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Use <code>ComposeContentTestRule</code>. For asynchronous events, use <code>composeTestRule.awaitIdle()</code> to block the test thread until all pending recompositions and coroutine jobs settle. Alternatively, use <code>runTest</code> with `StandardTestDispatcher` to control time progression manually using `advanceTimeBy()`.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Why is JVM-based snapshot testing (e.g., using Paparazzi) preferred over device-based instrumentation screenshot testing?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Stubbing internal method implementation details in Unit Tests rather than testing public API inputs and outputs, leading to brittle tests that break on refactoring.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 8 -->
+    <article class="topic-card">
+        <h2 id="gradle-optimizations">
+            <input type="checkbox" class="topic-chk" data-topic="8">
+            <span>8. Tooling & Gradle Build Optimization</span>
+            <span class="topic-tag">Tooling</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Gradle Cache Optimizations</strong>:
+                    <ul>
+                        <li>Configuration Cache: Serializes the build task graph to disk, skipping the compilation configuration phase on subsequent runs.</li>
+                        <li>Build Cache: Reuses task outputs from prior runs, sharing them across developers via remote cache servers.</li>
+                    </ul>
+                </li>
+                <li><strong>Parallel Execution</strong>: Allows compiling independent modules simultaneously. Enable in <code>gradle.properties</code> via <code>org.gradle.parallel=true</code>.</li>
+                <li><strong>Dependency Configuration</strong>: Use <code>implementation</code> instead of <code>api</code> to prevent transitive dependency leakage, isolating compilation graphs and dramatically speeding up compilation times.</li>
+            </ul>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How does using implementation instead of api in multi-module builds improve compile times?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Using <code>implementation</code> hides dependencies from the consuming modules' classpath. When a dependency compiles, Gradle does not need to recompile the downstream consumer modules unless their public API interfaces change. If <code>api</code> were used, any change in the low-level library would force a complete compilation propagation of the entire module stack.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain the difference between incremental compilation and compilation caching in modern Android development.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using wildcard import paths or hardcoded dependency versions instead of a centralized Version Catalog (`libs.versions.toml`), causing version conflicts and rebuild overhead.</div>
+                </div>
+            </div>
+        </div>
+    </article>
 </div>

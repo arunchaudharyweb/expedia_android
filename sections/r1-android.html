@@ -286,4 +286,62 @@
             </div>
         </div>
     </article>
+
+    <!-- TOPIC 11 -->
+    <article class="topic-card">
+        <h2 id="accessibility">
+            <input type="checkbox" class="topic-chk" data-topic="11">
+            <span>11. Android Accessibility & Inclusive Design (A11y)</span>
+            <span class="topic-tag">A11y</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>TalkBack (Screen Reader)</strong>: Reads components out loud. Use <code>contentDescription</code> on purely visual elements (like Image) or set them to null/null-descriptor to skip decoration elements.</li>
+                <li><strong>Touch Targets</strong>: Ensure interactive elements are at least <strong>48x48dp</strong> in size, even if their visual footprint is smaller (use padding/minimum bounds).</li>
+                <li><strong>Color Contrast</strong>: Visual components should meet WCAG AA standards (minimum <strong>4.5:1</strong> contrast ratio for normal text, <strong>3:1</strong> for large text).</li>
+                <li><strong>Compose Semantics Tree</strong>: Group related information on row/card lists using <code>Modifier.semantics(mergeDescendants = true) { ... }</code> so screen readers read the full card layout in one sweep.</li>
+            </ul>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How do you group visual elements in Jetpack Compose so they are read as a single touch target by TalkBack?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Use <code>Modifier.semantics(mergeDescendants = true) { ... }</code> on the parent container (like a Card or Row). This combines the content descriptions and texts of all child components into a single announcement, saving swiping efforts for TalkBack users.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">What are the accessibility pitfalls of using visual-only state changes (like coloring an input border red for invalid input)?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Failing to add content descriptions to action-triggering ImageButtons, making them read as "unlabelled button" to visually impaired users.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 12 -->
+    <article class="topic-card">
+        <h2 id="profiling">
+            <input type="checkbox" class="topic-chk" data-topic="12">
+            <span>12. Profiling & Diagnostics (Android Profiler)</span>
+            <span class="topic-tag">Performance</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>App Launch Tiers</strong>: Cold (no existing process, slowest), Warm (process exists, Activity not created), and Hot starts (Activity in memory, fastest). Profile using Macrobenchmark library.</li>
+                <li><strong>CPU Profiler (Systrace / Perfetto)</strong>: Tracks frame rendering bottlenecks (identifying frames taking &gt;16.6ms at 60Hz causing jank) and traces long execution methods.</li>
+                <li><strong>Memory Profiler</strong>: Examines heap allocations, captures heap dumps (.hprof), tracks garbage collection (GC) churn bottlenecks, and detects memory leaks.</li>
+                <li><strong>Power Profiler</strong>: Tracks battery draining spikes caused by excessive GPS/radio polling or wake lock leaks.</li>
+            </ul>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How do you diagnose and fix UI rendering jank (dropped frames) during screen scrolling?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Capture a trace using the Android Studio CPU Profiler (System Trace) or Perfetto during scrolling. Find the frame lifecycle markers and inspect if the Main Thread is blocked by heavy layout compilation, image decoding, database writes, or garbage collection (GC) churn. Solve by moving computations off the main thread, caching image sizes, and lazy-loading lists.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Explain GC churn and how frequent allocations of short-lived objects in draw loops affect scrolling performance.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Running performance profilers on a debug build, which contains debugging metadata and overhead, leading to inaccurate profiling results. Always use release or profileable builds.</div>
+                </div>
+            </div>
+        </div>
+    </article>
 </div>
