@@ -74,7 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Section configurations for metadata calculation
     const sectionConfigs = {
-        'r1-kotlin': { title: 'Kotlin Fundamentals', path: 'sections/r1-kotlin.html', count: 19 },
+        'r1-kotlin': { title: 'Kotlin Fundamentals', path: 'sections/r1-kotlin.html', count: 24 },
         'r1-android': { title: 'Android Fundamentals', path: 'sections/r1-android.html', count: 13 },
         'r1-coroutines': { title: 'Coroutines Deep Dive', path: 'sections/r1-coroutines.html', count: 10 },
         'r1-reactive': { title: 'Reactive Programming', path: 'sections/r1-reactive.html', count: 8 },
