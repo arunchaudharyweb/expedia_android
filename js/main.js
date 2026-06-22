@@ -74,6 +74,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Section configurations for metadata calculation
     const sectionConfigs = {
+        'android-fundamentals': { title: 'Android Fundamentals', path: 'sections/android-fundamentals.html', count: 6 },
         'r1-kotlin': { title: 'Kotlin Fundamentals', path: 'sections/r1-kotlin.html', count: 12 },
         'r1-coroutines': { title: 'Coroutines & Concurrency', path: 'sections/r1-coroutines.html', count: 10 },
         'r1-reactive': { title: 'Reactive Programming', path: 'sections/r1-reactive.html', count: 4 },
@@ -154,12 +155,13 @@ document.addEventListener('DOMContentLoaded', () => {
                         <div class="intro-round-card">
                             <h3>Round 1: Tech & Internals</h3>
                             <ul>
+                                <li>Kotlin & Android Framework Fundamentals</li>
                                 <li>Kotlin Compiler & JVM/ART translation</li>
                                 <li>Android System Architecture & Framework internals</li>
                                 <li>Coroutines structured concurrency & execution pools</li>
                                 <li>Reactive Stream contracts & StateFlow vs LiveData</li>
                             </ul>
-                            <a href="#r1-kotlin" class="btn btn-primary start-btn">Start R1 Prep</a>
+                            <a href="#android-fundamentals" class="btn btn-primary start-btn">Start R1 Prep</a>
                         </div>
                         <div class="intro-round-card">
                             <h3>Round 2: Architecture & Live Code</h3>
@@ -270,7 +272,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function calculateMetrics() {
         // Calculate Round 1 completion percentage (Part 1)
-        const r1Sections = ['r1-kotlin', 'r1-coroutines', 'r1-reactive', 'r1-compose', 'r1-android'];
+        const r1Sections = ['android-fundamentals', 'r1-kotlin', 'r1-coroutines', 'r1-reactive', 'r1-compose', 'r1-android'];
         let r1Total = 0, r1Checked = 0;
 
         r1Sections.forEach(secId => {
