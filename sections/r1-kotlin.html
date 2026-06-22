@@ -1,46 +1,37 @@
 <div class="section-content">
     <h1>Section 1: Kotlin Fundamentals & Advanced Kotlin</h1>
     <div class="section-meta">
-        <span>⏱ 35 min read</span>
+        <span>⏱ 12 min read</span>
         <span>✓ Part 1 Core</span>
     </div>
     
     <p class="section-intro">
-        Senior-level Kotlin guide covering core syntax, JVM type systems, compilations, object references, generic variance, collection scaling, and memory layouts.
+        Streamlined Kotlin cheat sheet focusing on high-probability Expedia interview questions, reference mechanics, memory structures, collection scaling, and generic variance.
     </p>
 
     <!-- TOPIC 1 -->
     <article class="topic-card">
-        <h2 id="variables">
+        <h2 id="val-vs-var">
             <input type="checkbox" class="topic-chk" data-topic="1">
-            <span>1. Variables</span>
+            <span>1. val vs var Reference Mutability</span>
             <span class="topic-tag">Basics</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Variables in Kotlin are names bound to storage locations on the stack or heap, defined via `val` or `var` references.</p>
-            <h3>Internal Working</h3>
-            <p>The compiler evaluates declarations, resolving types statically. Primitive types are mapped to native Java JVM primitives where possible, falling back to wrappers on execution boundaries.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Kotlin
-val x = 10
-// JVM Bytecode representation
-BIPUSH 10
-ISTORE 1</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Primitives inside function blocks reside entirely on the execution stack. Object references occupy reference slots on the stack pointing to heap memory.</p>
-            <h3>Time Complexity</h3>
-            <p>Declaration and reference lookup: O(1).</p>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><code>val</code>: Declares a read-only, final reference. In bytecode, compiles to a final field with a getter.</li>
+                <li><code>var</code>: Declares a mutable reference. In bytecode, compiles to a non-final field with both getter and setter.</li>
+                <li><strong>Reference vs Object Immutability:</strong> A <code>val</code> collection reference (e.g. <code>val list = mutableListOf(1)</code>) cannot be reassigned, but the contents of the collection can still be modified.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Where do Kotlin variables reside in memory at runtime?</div>
+                    <div class="qa-label question">Does declaring a val property with a custom getter generate a backing field in Java bytecode?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Local primitive variables inside function blocks reside on the stack. Local object reference handles reside on the stack, referencing the actual object instances allocated on the heap. Member properties of classes reside on the heap as part of their enclosing class instance.</div>
+                    <div class="qa-text">No. If a property is declared as <code>val</code> and has a custom getter (e.g., <code>val isAdult get() = age >= 18</code>) without using the <code>field</code> identifier, the compiler does not generate a backing field. It compiles simply into a standard Java method.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does the JVM handle thread-local stack allocations for variables under high concurrency?</div>
+                    <div class="qa-text">How does the <code>const val</code> compile-time constant differ from a standard <code>val</code>? (Inlined at compile-time directly in calling code, primitives and strings only).</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Believing all variables are allocated on the heap. Stack allocation is used for all local variables.</div>
+                    <div class="qa-text">Assuming that declaring a collection reference as `val` makes the collection immutable.</div>
                 </div>
             </div>
         </div>
@@ -48,36 +39,28 @@ ISTORE 1</code></pre>
 
     <!-- TOPIC 2 -->
     <article class="topic-card">
-        <h2 id="val-vs-var">
+        <h2 id="null-safety">
             <input type="checkbox" class="topic-chk" data-topic="2">
-            <span>2. val vs var Reference Mutability</span>
-            <span class="topic-tag">Basics</span>
+            <span>2. Null Safety & Platform Types</span>
+            <span class="topic-tag">Type System</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>`val` declares a read-only, final reference. `var` defines a mutable reference that can be reassigned.</p>
-            <h3>Internal Working</h3>
-            <p>`val` variables compile to final private fields with a getter method. `var` variables compile to non-final private fields with both getter and setter methods.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Kotlin
-val name = "Expedia"
-// JVM Decompiled Java representation
-private final String name = "Expedia";
-public final String getName() { return this.name; }</code></pre>
-            <h3>Memory Implications</h3>
-            <p>`val` guarantees reference immutability, not object immutability. If a `val` references a mutable list, the list's contents can change without allocating a new list reference.</p>
-            <h3>Time Complexity</h3>
-            <p>Reference assignment: O(1).</p>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Safe Calls (<code>?.</code>)</strong>: Executes downstream references only if non-null, returning null otherwise.</li>
+                <li><strong>Elvis Operator (<code>?:</code>)</strong>: Evaluates default expressions if the left-side expression resolves to null.</li>
+                <li><strong>Double Bang (<code>!!</code>)</strong>: Forces non-null casting, throwing a <code>NullPointerException</code> if null.</li>
+                <li><strong>Platform Types (<code>T!</code>)</strong>: Types coming from Java without nullability annotations. Kotlin does not enforce compile-time checks on them, which can trigger runtime NPEs on access.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">What is the JVM difference between val and var?</div>
+                    <div class="qa-label question">What are Platform Types in Kotlin and how do they impact safety?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">At the JVM level, properties declared as <code>val</code> compile to private final fields with a generated getter method. Properties declared as <code>var</code> compile to private non-final fields with both getters and setters.</div>
+                    <div class="qa-text">Platform types are types originating from Java code that lack nullability annotations (like <code>@Nullable</code> or <code>@NotNull</code>). Kotlin represents them with a single exclamation mark (e.g., <code>String!</code>). Because they bypass Kotlin's compile-time null safety checks, they can trigger runtime <code>NullPointerException</code> if dereferenced when null. To prevent this, annotate Java APIs or cast them to explicit nullable/non-null Kotlin types immediately.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">Does declaring a val property with a custom getter generate a backing field in Java bytecode?</div>
+                    <div class="qa-text">Explain the overhead of Kotlin's compiler-inserted <code>Intrinsics.checkNotNullParameter</code> assertions on method arguments.</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Assuming that declaring a collection as a <code>val</code> makes the collection read-only.</div>
+                    <div class="qa-text">Using the double bang (<code>!!</code>) operator to resolve compiler errors instead of using safe navigation or smart casting.</div>
                 </div>
             </div>
         </div>
@@ -85,37 +68,26 @@ public final String getName() { return this.name; }</code></pre>
 
     <!-- TOPIC 3 -->
     <article class="topic-card">
-        <h2 id="data-types">
+        <h2 id="data-classes">
             <input type="checkbox" class="topic-chk" data-topic="3">
-            <span>3. Data Types</span>
-            <span class="topic-tag">Type System</span>
+            <span>3. Data Classes vs Standard Classes</span>
+            <span class="topic-tag">Classes</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Kotlin's type system represents primitives and objects uniformly (Int, Double, Boolean, Byte), masking Java's primitive/wrapper distinction.</p>
-            <h3>Internal Working</h3>
-            <p>The compiler uses primitive Java types (like `int`) where possible to optimize execution. It wraps values in object boxes (like `java.lang.Integer`) only when nullability is required or when values are passed as generic arguments.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Kotlin
-val age: Int = 25
-val nullableAge: Int? = 25
-// JVM Decompiled Java representation
-int age = 25;
-Integer nullableAge = Integer.valueOf(25); // Boxed object allocation</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Primitive types occupy stack memory (e.g. 4 bytes for `Int`). Boxed wrapper classes (like `Integer`) allocate around 16 bytes on the heap for the object header in addition to the 4-byte payload.</p>
-            <h3>Time Complexity</h3>
-            <p>Access operations: O(1).</p>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Compiler Generation</strong>: Automatically generates <code>equals()</code>, <code>hashCode()</code>, <code>toString()</code>, <code>copy()</code>, and <code>componentN()</code> destructuring functions.</li>
+                <li><strong>Rules</strong>: Primary constructor must contain at least one parameter, and all parameters must be declared as <code>val</code> or <code>var</code>. Data classes cannot be marked as <code>abstract</code>, <code>open</code>, <code>sealed</code>, or <code>inner</code>.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">When does Kotlin force primitive type boxing?</div>
+                    <div class="qa-label question">How does the copy() method behave in a data class containing a nested mutable list?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Boxing occurs when a primitive is declared as nullable (e.g. <code>Int?</code>), used as a generic parameter (e.g. <code>List&lt;Int&gt;</code>), or passed as an argument of type <code>Any</code>.</div>
+                    <div class="qa-text">The generated <code>copy()</code> method performs a **shallow copy**. It creates a new instance of the data class, but passes the exact same object reference addresses for nested structures. Mutating the nested list in the copied instance will affect the original instance. For deep copies, you must construct a custom copy logic.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does array initialization of IntArray differ from Array&lt;Int&gt; in terms of memory layout?</div>
+                    <div class="qa-text">What happens if you define a custom <code>equals()</code> method in a data class? (The compiler uses the custom implementation, ignoring primary constructor properties for equality checks).</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Using <code>Array&lt;Int&gt;</code> instead of <code>IntArray</code> for primitive collections, causing high memory usage due to object boxing.</div>
+                    <div class="qa-text">Using mutable lists inside a data class, which breaks <code>equals()</code> and <code>hashCode()</code> properties if mutated.</div>
                 </div>
             </div>
         </div>
@@ -123,38 +95,27 @@ Integer nullableAge = Integer.valueOf(25); // Boxed object allocation</code></pr
 
     <!-- TOPIC 4 -->
     <article class="topic-card">
-        <h2 id="null-safety">
+        <h2 id="sealed-classes">
             <input type="checkbox" class="topic-chk" data-topic="4">
-            <span>4. Null Safety Mechanics</span>
-            <span class="topic-tag">Type System</span>
+            <span>4. Sealed Classes vs Enums</span>
+            <span class="topic-tag">Classes</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Kotlin's null safety system prevents NullPointerExceptions by separating references into non-nullable types and nullable types at compile time.</p>
-            <h3>Internal Working</h3>
-            <p>Null safety is enforced by the compiler. To prevent nulls from propagating, the compiler inserts null assertions (`Intrinsics.checkNotNullParameter`) at the entry points of public API methods, validating arguments passed from Java code.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Kotlin
-fun printText(text: String) { println(text) }
-// JVM Decompiled Java representation
-public final void printText(String text) {
-    Intrinsics.checkNotNullParameter(text, "text");
-    System.out.println(text);
-}</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Nullable primitives (e.g. `Double?`) force wrapper allocations on the heap, increasing memory footprint compared to native primitives.</p>
-            <h3>Time Complexity</h3>
-            <p>Null checks and assertions: O(1).</p>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Sealed Classes</strong>: Closed type hierarchies representing restricted class trees. Subclasses can have multiple instances, each containing unique state and constructor parameters.</li>
+                <li><strong>Enums</strong>: Restricted constant value hierarchies. Every enum value is a singleton instance without dynamic constructor state.</li>
+                <li><strong>When Blocks</strong>: The compiler enforces exhaustive checks on both sealed classes and enums, avoiding the need for an <code>else</code> branch.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">How are non-null parameter checks enforced at the JVM level?</div>
+                    <div class="qa-label question">When should you choose a sealed class over an enum?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">The compiler inserts static null check assertions (<code>Intrinsics.checkNotNullParameter</code>) at the beginning of method bodies. If a Java client passes a null value, the application throws a NullPointerException immediately.</div>
+                    <div class="qa-text">Use an enum if you represent a fixed set of static values (like days of the week or booking types). Use a sealed class when subclasses need to maintain dynamic, runtime state (like representing UI states: <code>Success(val hotels: List)</code> vs <code>Error(val exception: Throwable)</code>).</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">Explain what platform types are and how they affect null safety checks during compilation.</div>
+                    <div class="qa-text">How does the Kotlin compiler generate sealed classes under the hood on JVM 17+? (Uses Java's native <code>sealed class</code> keyword for validation).</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Using the non-null assertion operator (<code>!!</code>) to bypass compile-time errors instead of handling null checks gracefully.</div>
+                    <div class="qa-text">Declaring stateless sealed subclasses as <code>class</code> instead of <code>object</code>, resulting in redundant instance allocations.</div>
                 </div>
             </div>
         </div>
@@ -162,39 +123,27 @@ public final void printText(String text) {
 
     <!-- TOPIC 5 -->
     <article class="topic-card">
-        <h2 id="classes">
+        <h2 id="objects">
             <input type="checkbox" class="topic-chk" data-topic="5">
-            <span>5. Classes & Initializations</span>
-            <span class="topic-tag">OOP</span>
+            <span>5. Object & Companion Objects</span>
+            <span class="topic-tag">Classes</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Classes in Kotlin encapsulate state and behavior, defaulting to closed (`final`) class definitions.</p>
-            <h3>Internal Working</h3>
-            <p>The compiler groups primary constructor arguments and init blocks into a single class initializer body. Classes are compiled as final classes unless marked open.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Kotlin
-class Member(val name: String)
-// JVM Decompiled Java representation
-public final class Member {
-   private final String name;
-   public Member(String name) { this.name = name; }
-   public final String getName() { return this.name; }
-}</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Each class instance allocates space on the heap representing its properties and an object header. Inheritance chains increase constructor overhead by calling parent constructors sequentially.</p>
-            <h3>Time Complexity</h3>
-            <p>Instantiation: O(1).</p>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>object</strong>: Declares a singleton instance class. Initialized lazily upon first access.</li>
+                <li><strong>companion object</strong>: Tied to the enclosing class. Initialized when the enclosing class is loaded by the JVM ClassLoader.</li>
+                <li><strong>Java Interop</strong>: Access using `Class.Companion.method()` in Java, or annotate with <code>@JvmStatic</code> to access them as standard static methods.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">What is the execution order of init blocks, property initializations, and secondary constructors during class construction?</div>
+                    <div class="qa-label question">Is a companion object initialized lazily or eagerly?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">The base class is initialized first. Inside the target class, property initializers and <code>init</code> blocks run sequentially in the order of definition. Finally, the body of the secondary constructor is executed.</div>
+                    <div class="qa-text">A companion object is initialized when the enclosing class is loaded and initialized by the JVM ClassLoader (typically when the class is first accessed or instantiated). This behaves eagerly relative to class access, unlike a standalone <code>object</code> singleton which is resolved lazily on first direct reference call.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">What are the security and memory risks of accessing open member functions inside constructor initializers?</div>
+                    <div class="qa-text">How does the <code>@JvmStatic</code> annotation affect JVM class bytecode structure?</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Attempting to inherit from a class without declaring it as open, causing compiler errors.</div>
+                    <div class="qa-text">Assuming companion objects act as native static members in Java without annotations (they are compiled as inner class singletons under the hood).</div>
                 </div>
             </div>
         </div>
@@ -202,33 +151,27 @@ public final class Member {
 
     <!-- TOPIC 6 -->
     <article class="topic-card">
-        <h2 id="data-classes">
+        <h2 id="collections">
             <input type="checkbox" class="topic-chk" data-topic="6">
-            <span>6. Data Classes</span>
-            <span class="topic-tag">OOP</span>
+            <span>6. Collections: ArrayList vs HashMap Internals</span>
+            <span class="topic-tag">Collections</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Data classes are classes designed to store state, with boilerplate helper methods automatically generated by the compiler.</p>
-            <h3>Internal Working</h3>
-            <p>The compiler generates equals(), hashCode(), toString(), copy(), and componentN() methods based only on the properties declared in the primary constructor.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Decompiled JVM structure for component methods
-public final String component1() { return this.name; }</code></pre>
-            <h3>Memory Implications</h3>
-            <p>The auto-generated <code>copy()</code> method performs a shallow copy of properties. If a property is a mutable reference, both the original and copied instances will point to the same nested object in memory.</p>
-            <h3>Time Complexity</h3>
-            <p>Equality checks and hashCode: O(N) where N is the number of primary properties.</p>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>ArrayList</strong>: Backed by a dynamic array. Default capacity is 10. Resizes by allocating a new array of 1.5x capacity and copying elements when full. Access: O(1), Insertion: O(1) amortized.</li>
+                <li><strong>HashMap</strong>: Backed by an array of buckets (nodes). Resolves index using <code>hashCode() % capacity</code>. Uses linked lists for collision resolution, converting to red-black trees (treeifying) when a bucket contains 8+ items (threshold of 8) and capacity is 64+.</li>
+                <li><strong>Mutable vs Immutable</strong>: Kotlin enforces read-only interfaces (<code>List</code>) at compile time. At runtime, these compile to standard mutable JVM collections, meaning they can be cast back if not protected.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Why does the generated copy() method perform a shallow copy, and what are its risks?</div>
+                    <div class="qa-label question">What happens internally when a HashMap encounters hash collisions?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">It performs a shallow copy to minimize performance and memory overhead. The copied instance references the same nested object instances in memory, which can lead to unexpected state updates if properties are mutable.</div>
+                    <div class="qa-text">When keys produce the same bucket index, the nodes are chained together in a linked list. If the number of collisions in a bucket exceeds 8, and the total map capacity is 64+, Java 8+ transforms the linked list into a red-black tree (self-balancing binary search tree), optimizing lookup time complexity from O(N) to O(log N).</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does the generated hashCode() handle null parameters and circular object references?</div>
+                    <div class="qa-text">What is the load factor of a HashMap, and how does it determine rehashing cycles?</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Modifying nested mutable lists inside a copied data class instance and expecting the original class instance to remain unmodified.</div>
+                    <div class="qa-text">Assuming Kotlin's standard read-only collections (<code>List</code>) are immutable. (They are read-only views of mutable lists and can still be modified at runtime).</div>
                 </div>
             </div>
         </div>
@@ -236,35 +179,26 @@ public final String component1() { return this.name; }</code></pre>
 
     <!-- TOPIC 7 -->
     <article class="topic-card">
-        <h2 id="sealed-classes">
+        <h2 id="extension-functions">
             <input type="checkbox" class="topic-chk" data-topic="7">
-            <span>7. Sealed Classes & Interfaces</span>
-            <span class="topic-tag">OOP</span>
+            <span>7. Extension Functions</span>
+            <span class="topic-tag">Functions</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Sealed classes define closed class hierarchies, restricting inheritance to subclasses declared within the same module.</p>
-            <h3>Internal Working</h3>
-            <p>The compiler generates abstract classes with package-private constructors. It maintains a list of subclasses in the class file metadata, allowing it to verify exhaustiveness in <code>when</code> expressions.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Decompiled Java representation
-public abstract class Result {
-   private Result() {} // package-private constructor prevents external inheritance
-}</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Stateless subclasses should be declared as singleton objects to prevent redundant memory allocations on the heap.</p>
-            <h3>Time Complexity</h3>
-            <p>Subclass instantiation: O(1).</p>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Static Resolution</strong>: Extension functions do not modify the receiver class. They compile to Java static methods that accept the receiver object as the first parameter.</li>
+                <li><strong>Polymorphism</strong>: Because they are static methods under the hood, they are resolved statically at compile time based on the reference type, not polymorphic runtime dispatch.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">How does the compiler enforce exhaustiveness for sealed classes in when expressions?</div>
+                    <div class="qa-label question">Why are extension functions resolved statically instead of dynamically?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">The compiler reads the subclass metadata stored in the sealed class declaration. If the <code>when</code> expression is used as a statement (which requires a return value), the compiler verifies that all subclasses are handled, throwing a compiler error if any subclass is missing.</div>
+                    <div class="qa-text">Because they compile to standard Java static methods. The compiler determines which method to call based on the declared static type of the reference at compile time. If a base class and a subclass both define an extension with the same name, calling it on a base-class reference points to the base class extension, even if the runtime object is a subclass.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">What is the difference between a sealed class and a sealed interface in Kotlin 1.5+?</div>
+                    <div class="qa-text">What happens if an extension function has the same signature as a member function? (The member function always takes priority).</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Adding a redundant default `else` branch to when statements evaluating sealed classes, which silences compiler warnings when a new subclass is added.</div>
+                    <div class="qa-text">Expecting extension functions to support polymorphic overrides.</div>
                 </div>
             </div>
         </div>
@@ -272,39 +206,27 @@ public abstract class Result {
 
     <!-- TOPIC 8 -->
     <article class="topic-card">
-        <h2 id="objects">
+        <h2 id="inline-functions">
             <input type="checkbox" class="topic-chk" data-topic="8">
-            <span>8. Objects: Singletons and Expressions</span>
-            <span class="topic-tag">OOP</span>
+            <span>8. High-Order Functions & inline, crossinline, noinline</span>
+            <span class="topic-tag">Functions</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>The `object` keyword defines a singleton class declaration. It can also be used as an expression (creating anonymous inner classes on the fly).</p>
-            <h3>Internal Working</h3>
-            <p>Singleton objects use a static constructor initialization pattern. The instance is constructed when the class is first loaded by the JVM, guaranteeing thread safety during initialization.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Decompiled Java representation
-public final class Config {
-   public static final Config INSTANCE;
-   private Config() {}
-   static {
-      INSTANCE = new Config();
-   }
-}</code></pre>
-            <h3>Memory Implications</h3>
-            <p>A singleton object remains in memory for the duration of the process lifecycle, while anonymous object expressions allocate a new object on the heap for each execution.</p>
-            <h3>Time Complexity</h3>
-            <p>Access operations: O(1).</p>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>inline</strong>: Tells the compiler to copy the function body and lambda arguments directly to the call site, eliminating class allocation and lambda execution overhead.</li>
+                <li><strong>crossinline</strong>: Restricts the lambda argument from using non-local returns (e.g. `return` to exit the enclosing function). Necessary when the lambda is executed inside a nested context.</li>
+                <li><strong>noinline</strong>: Prevents inlining of specific lambda parameters, treating them as standard Function objects (useful if you need to store or pass the lambda).</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain the thread-safety guarantees of Kotlin singleton object initialization.</div>
+                    <div class="qa-label question">What is a non-local return, and how does inline enable it?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Kotlin singleton objects are thread-safe because they compile down to static blocks. The JVM guarantees that static initializers are executed sequentially and only once when the class is loaded, ensuring thread-safe instantiation.</div>
+                    <div class="qa-text">A non-local return is a <code>return</code> statement inside a lambda that exits the outer function calling the lambda. This is only possible because the compiler copies the lambda body directly to the call site when the function is marked as `inline`. Non-inlined lambdas cannot use non-local returns.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">What is the difference between object declarations and object expressions regarding initialization timing?</div>
+                    <div class="qa-text">Explain the bytecode file-size growth trade-off of using `inline` on large functions.</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Storing references to short-lived contexts (like Activities) inside a singleton object, causing memory leaks.</div>
+                    <div class="qa-text">Marking small functions that do not accept lambdas as `inline` (which increases bytecode size without improving performance).</div>
                 </div>
             </div>
         </div>
@@ -312,38 +234,26 @@ public final class Config {
 
     <!-- TOPIC 9 -->
     <article class="topic-card">
-        <h2 id="companion-objects">
+        <h2 id="reified">
             <input type="checkbox" class="topic-chk" data-topic="9">
-            <span>9. Companion Objects</span>
-            <span class="topic-tag">OOP</span>
+            <span>9. Reified Type Parameters</span>
+            <span class="topic-tag">Generics</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>A companion object is an object nested inside a class. It can access the private members of the enclosing class, serving as a replacement for static methods in Java.</p>
-            <h3>Internal Working</h3>
-            <p>The companion object compiles to a nested static class. The enclosing class contains a static reference to this inner class instance, which is resolved when the enclosing class loads.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Decompiled Java representation
-public final class Client {
-   public static final Client.Companion Companion = new Client.Companion(null);
-   public static final class Companion {
-      public final void test() {}
-   }
-}</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Companion objects are instantiated when the outer class is loaded, allocating space for the static inner class instance on the heap.</p>
-            <h3>Time Complexity</h3>
-            <p>Access operations: O(1).</p>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Type Erasure</strong>: Generics are erased at runtime on the JVM, meaning you cannot access class info using <code>T::class.java</code> directly.</li>
+                <li><strong>reified</strong>: Paired with <code>inline</code>. Keeps type information accessible at runtime by replacing generic references with the concrete class literal directly at the inlined call site.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Do companion objects compile to static methods? How can you call them from Java code?</div>
+                    <div class="qa-label question">Why do reified parameters require inline functions?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">No. They compile to nested singleton objects. To call them from Java, you must reference the Companion instance: <code>OuterClass.Companion.method()</code>. To generate static helper methods on the outer class directly, annotate the companion method with <code>@JvmStatic</code>.</div>
+                    <div class="qa-text">Because the JVM erases generic type parameters at compile-time. When a function is marked as <code>inline</code> and its type as <code>reified</code>, the compiler copies the function body to the call site, where the concrete type is known. The compiler replaces the generic <code>T</code> with the actual class reference (e.g. <code>String::class.java</code>), preserving type info.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does JvmStatic annotation affect bytecode size and method dispatching?</div>
+                    <div class="qa-text">Can you invoke a function containing a reified parameter from Java? (No, because Java does not support Kotlin-style function inlining).</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Assuming companion object methods compile directly to static JVM methods without using the `@JvmStatic` annotation.</div>
+                    <div class="qa-text">Attempting to use `reified` parameters in standard, non-inline functions.</div>
                 </div>
             </div>
         </div>
@@ -351,35 +261,34 @@ public final class Client {
 
     <!-- TOPIC 10 -->
     <article class="topic-card">
-        <h2 id="inheritance">
+        <h2 id="delegation">
             <input type="checkbox" class="topic-chk" data-topic="10">
-            <span>10. Inheritance</span>
-            <span class="topic-tag">OOP</span>
+            <span>10. Property Delegation & by lazy</span>
+            <span class="topic-tag">Delegation</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Inheritance allows a subclass to inherit properties and methods from a parent class, implemented using the open keyword.</p>
-            <h3>Internal Working</h3>
-            <p>Kotlin inheritance compiles to standard Java class extension (`extends`). The subclass constructor calls the parent constructor via the superclass instruction (`super(...)`).</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Decompiled Java representation
-public final class SpecialHotel extends BaseHotel {
-    public SpecialHotel(String name) { super(name); }
-}</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Instantiating a subclass allocates a single contiguous block of memory on the heap representing both parent and child properties.</p>
-            <h3>Time Complexity</h3>
-            <p>Instance allocation: O(1).</p>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>by lazy</strong>: Computes values only on first access, caching the result. Default mode is thread-safe.</li>
+                <li><strong>Thread Safety Modes</strong>:
+                    <ul>
+                        <li><code>LazyThreadSafetyMode.SYNCHRONIZED</code>: Double-checked locking. Only one thread can initialize.</li>
+                        <li><code>LazyThreadSafetyMode.PUBLICATION</code>: Multiple threads can initialize, but only the first returned result is saved.</li>
+                        <li><code>LazyThreadSafetyMode.NONE</code>: No lock checks. Fast, but unsafe for concurrent access.</li>
+                    </ul>
+                </li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">How does inheritance affect class initialization order?</div>
+                    <div class="qa-label question">What are the three lazy initialization modes in Kotlin?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">The parent class constructor is executed first, initializing the parent properties. Once completed, the child class constructor initializes the child properties.</div>
+                    <div class="qa-text">1. <code>SYNCHRONIZED</code>: Uses double-checked locking to guarantee only one thread initializes the property.
+                    2. <code>PUBLICATION</code>: Allows multiple threads to call the initializer block, but only the first completed value is cached and returned.
+                    3. <code>NONE</code>: Bypasses thread synchronization, providing the fastest access but risking race conditions if accessed concurrently.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">What are the security and memory risks of accessing open member functions inside constructor initializers?</div>
+                    <div class="qa-text">How does the <code>ObservableProperty</code> delegate help track changes to properties in ViewModels?</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Calling open methods inside base constructors before the subclass has finished initializing.</div>
+                    <div class="qa-text">Using the default `SYNCHRONIZED` mode for UI-bound properties accessed only from the main thread, introducing unnecessary lock overhead.</div>
                 </div>
             </div>
         </div>
@@ -387,36 +296,27 @@ public final class SpecialHotel extends BaseHotel {
 
     <!-- TOPIC 11 -->
     <article class="topic-card">
-        <h2 id="interfaces">
+        <h2 id="generics">
             <input type="checkbox" class="topic-chk" data-topic="11">
-            <span>11. Interfaces</span>
-            <span class="topic-tag">OOP</span>
+            <span>11. Generics: Covariance & Contravariance</span>
+            <span class="topic-tag">Generics</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Interfaces in Kotlin define contracts that classes can implement, and can contain default implementations for properties and methods.</p>
-            <h3>Internal Working</h3>
-            <p>Default interface methods are compiled using a companion static class `DefaultImpls` (on older JVM targets) or using native Java interface default methods.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Decompiled Java representation of default method
-public interface Clickable {
-   void click();
-   // Kotlin generates a DefaultImpls inner class on older JVM targets
-}</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Default implementations do not add instance state properties to implementing classes, avoiding memory overhead.</p>
-            <h3>Time Complexity</h3>
-            <p>Method lookup: O(1) via interface table pointers.</p>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Covariance (<code>out T</code>)</strong>: Restricts the type to read-only positions. Preserves subtyping: `Producer<Dog>` matches `Producer<Animal>`. (Equivalent to `? extends T` in Java).</li>
+                <li><strong>Contravariance (<code>in T</code>)</strong>: Restricts the type to write-only positions. Reverses subtyping: `Consumer<Animal>` matches `Consumer<Dog>`. (Equivalent to `? super T` in Java).</li>
+                <li><strong>Star Projection (<code>*</code>)</strong>: Used when you don't know or care about the type. Restricts writes (accepts nothing) but allows reading `Any?`.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">How does Kotlin implement default interface methods on older JVM targets?</div>
+                    <div class="qa-label question">Explain covariance and contravariance in Kotlin.</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">On older JVM targets, the compiler generates a static helper class named <code>DefaultImpls</code>. This class contains static methods that take the receiver instance as the first argument, implementing default behavior automatically.</div>
+                    <div class="qa-text">Covariance (<code>out T</code>) allows you to read values from a class but prevents writing them. It preserves the subtyping relationship: a collection of dogs can be assigned to a reference expecting a collection of animals. Contravariance (<code>in T</code>) is the opposite: you can write values into the class but cannot read them, reversing subtyping relationships.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does diamond resolution work in Kotlin when inheriting duplicate default methods?</div>
+                    <div class="qa-text">How does declaration-site variance in Kotlin compare to use-site variance in Java?</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Declaring stateful backing fields inside interfaces, which is not supported (interfaces are limited to stateless default properties).</div>
+                    <div class="qa-text">Declaring a parameter as invariant when it is only used as a producer (read-only), which unnecessarily limits caller compatibility.</div>
                 </div>
             </div>
         </div>
@@ -424,689 +324,66 @@ public interface Clickable {
 
     <!-- TOPIC 12 -->
     <article class="topic-card">
-        <h2 id="collections">
-            <input type="checkbox" class="topic-chk" data-topic="12">
-            <span>12. Collections Hierarchy</span>
-            <span class="topic-tag">Structures</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Kotlin's collections hierarchy distinguishes between read-only (immutable) and mutable interfaces, leveraging Java's standard collections on the JVM.</p>
-            <h3>Internal Working</h3>
-            <p>The compiler maps Kotlin interfaces (like `List`) to Java collection classes at runtime. Mutable checks are completed at compile time; runtime interfaces do not enforce read-only safety checks.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Kotlin type list maps directly to java.util.List
-val items: List<String> = listOf("A")
-// Compiles to: java.util.List</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Read-only lists (like `listOf()`) compile to specialized singleton empty lists or small array-backed wrappers, minimizing memory footprint.</p>
-            <h3>Time Complexity</h3>
-            <p>List search: O(N); Indexed lookup: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">What is the difference between Kotlin's List and MutableList interfaces at runtime?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">At the JVM level, both map to the same <code>java.util.List</code> class. The difference is only at compile time, where the Kotlin compiler prevents modification calls on the read-only interface. Java clients can bypass this read-only safety check at runtime.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How do read-only interfaces prevent class casting checks during compilation?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Expecting runtime errors if a Java helper modifies a Kotlin read-only list.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 13 -->
-    <article class="topic-card">
-        <h2 id="arraylist-internals">
-            <input type="checkbox" class="topic-chk" data-topic="13">
-            <span>13. ArrayList Internals</span>
-            <span class="topic-tag">Structures</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>An ArrayList is a list implementation backed by a dynamic array.</p>
-            <h3>Internal Working</h3>
-            <p>When the underlying array fills up, ArrayList allocates a new array that is 1.5x larger and copies the existing elements over. This resize operation incurs an O(N) allocation and copy cost.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Dynamic array declaration inside ArrayList
-private transient Object[] elementData;</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Empty slots in the allocated buffer consume reference space (4-8 bytes per slot), which can lead to memory overhead if the array is oversized.</p>
-            <h3>Time Complexity</h3>
-            <p>Add item: O(1) amortized; Add index: O(N); Indexed lookup: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">What is the resize growth formula of an ArrayList?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">The capacity increases by 50% (newCapacity = oldCapacity + (oldCapacity >> 1)). The existing elements are copied to the new array using <code>System.arraycopy</code>.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">What are the GC implications of multiple array allocations during large collections insertions?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Failing to specify an initial capacity for large lists, resulting in multiple expensive array resizes.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 14 -->
-    <article class="topic-card">
-        <h2 id="hashmap-internals">
-            <input type="checkbox" class="topic-chk" data-topic="14">
-            <span>14. HashMap Internals</span>
-            <span class="topic-tag">Structures</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>A HashMap is a hash table implementation that stores key-value pairs using buckets.</p>
-            <h3>Internal Working</h3>
-            <p>It uses an array of buckets. When the number of entries exceeds the threshold determined by the load factor (default 0.75), it triggers a rehashing process, allocating a larger array and moving all existing entries to new bucket locations. Collisions are handled using linked lists, which upgrade to red-black trees when a bucket's size exceeds 8 elements (treeification).</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// HashMap internal node array
-transient Node&lt;K,V&gt;[] table;</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Each map entry node allocates object headers, hash codes, and next node references, which can consume significant memory under load.</p>
-            <h3>Time Complexity</h3>
-            <p>Put and Get: O(1) amortized, O(log N) in case of collisions.</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain the hashing collision mitigation strategy and treeification threshold of HashMaps.</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Collisions are handled using chaining with linked lists. When a bucket's size exceeds 8 elements and the overall capacity is at least 64, the linked list is converted to a red-black tree (treeification) to guarantee O(log N) lookup times.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does the initial capacity calculation prevent multiple rehashing operations in HashMaps?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Failing to override hashCode() and equals() correctly for custom class keys, causing duplicate entries.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 15 -->
-    <article class="topic-card">
-        <h2 id="linkedhashmap">
-            <input type="checkbox" class="topic-chk" data-topic="15">
-            <span>15. LinkedHashMap</span>
-            <span class="topic-tag">Structures</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>LinkedHashMap extends HashMap by maintaining a doubly-linked list through all its entries, preserving insertion or access order.</p>
-            <h3>Internal Working</h3>
-            <p>It extends HashMap's entry nodes with `before` and `after` pointers, maintaining a doubly-linked list to track the order of entries.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Entry class inside LinkedHashMap
-static class Entry&lt;K,V&gt; extends HashMap.Node&lt;K,V&gt; {
-    Entry&lt;K,V&gt; before, after; // Pointers to maintain order
-}</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Each node requires extra pointer reference allocations (`before` and `after`), consuming more memory than a standard HashMap.</p>
-            <h3>Time Complexity</h3>
-            <p>Lookup: O(1); Iteration: O(N) proportional to the number of entries, which is faster than HashMap's bucket array scan.</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">How does LinkedHashMap maintain insertion order?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">It adds <code>before</code> and <code>after</code> pointer references to each entry node, maintaining a doubly-linked list that runs through all entries in insertion order.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does configuring the accessOrder flag help implement an LRU cache?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Assuming LinkedHashMap has the same memory footprint as a standard HashMap.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 16 -->
-    <article class="topic-card">
-        <h2 id="mutable-vs-immutable">
-            <input type="checkbox" class="topic-chk" data-topic="16">
-            <span>16. Mutable vs Immutable Collections</span>
-            <span class="topic-tag">Structures</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Kotlin separates collection interfaces into read-only (immutable) interfaces and mutable interfaces.</p>
-            <h3>Internal Working</h3>
-            <p>Both compile to the same underlying Java collection classes. The compiler prevents modification calls on read-only interfaces during compilation, but does not enforce read-only safety at runtime.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Kotlin List compiled signature
-public interface List extends Collection {} // compiled directly to java.util.List</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Read-only helper functions (like `listOf()`) allocate minimal array wrappers or singleton instances to optimize memory usage.</p>
-            <h3>Time Complexity</h3>
-            <p>Collection copy operations: O(N).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">How does Kotlin implement read-only collection safety if both interfaces map to the same Java collection classes?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">The compiler prevents modification calls on read-only interfaces during compilation. If a Java client accesses the collection at runtime, the compiler cannot prevent modifications. Use <code>toImmutableList()</code> from the kotlinx.collections.immutable library to guarantee runtime immutability.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">What is the performance overhead difference between read-only wrappers and true immutable collections?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Casting a read-only List reference to a MutableList to modify it, which can cause runtime crashes.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 17 -->
-    <article class="topic-card">
-        <h2 id="extension-functions">
-            <input type="checkbox" class="topic-chk" data-topic="17">
-            <span>17. Extension Functions</span>
-            <span class="topic-tag">OOP</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Extensions define functions or properties on a class without modifying its source code. Extensions are resolved statically and do not modify the target class.</p>
-            <h3>Internal Working</h3>
-            <p>Extensions compile directly to Java static methods where the receiver class instance is passed as the first parameter. Because they compile to static methods, extensions are resolved statically at compile time, not polymorphically at runtime.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Kotlin
-fun String.shout() = this.uppercase()
-// JVM Decompiled Java representation
-public static final String shout(String $receiver) {
-    return $receiver.toUpperCase();
-}</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Extensions compile to static methods and do not allocate additional heap memory on the receiver instances.</p>
-            <h3>Time Complexity</h3>
-            <p>Method lookup: O(1) via static compilation offset.</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Why are extension functions not polymorphic? Prove it using static resolution rules.</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Because they compile to static JVM methods. If an extension function is defined for both a base class and a subclass, the version that executes is determined by the static compiler type of the variable reference, not the concrete runtime class of the receiver.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">What happens if you define an extension function with the same signature as a member function of a class?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Expecting an extension function to override a member function with the same signature.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 18 -->
-    <article class="topic-card">
-        <h2 id="higher-order-functions">
-            <input type="checkbox" class="topic-chk" data-topic="18">
-            <span>18. Higher-Order Functions</span>
-            <span class="topic-tag">Functions</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>A higher-order function is a function that takes one or more functions as parameters, or returns a function as its result.</p>
-            <h3>Internal Working</h3>
-            <p>Higher-order functions compile to JVM types using the <code>FunctionN</code> interface hierarchy (e.g. <code>Function0</code>, <code>Function1</code>). The lambda parameter is represented as an object instance of these interfaces at runtime.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Decompiled Java signature equivalent
-public final void runTask(Function0 action) { action.invoke(); }</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Passing non-inlined higher-order lambdas allocates a new `Function` object instance on the heap for each invocation, increasing garbage collection pressure.</p>
-            <h3>Time Complexity</h3>
-            <p>Invocation overhead: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">What is the runtime representation of a Kotlin higher-order function parameter on the JVM?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">They compile to instance implementations of the <code>FunctionN</code> interface hierarchy (such as <code>Function0</code> or <code>Function1</code>). The lambda body is executed by calling the interface's <code>invoke()</code> method on the instance.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does the compiler handle variables captured inside non-inlined lambda closures?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Failing to inline higher-order functions that are executed frequently, causing high garbage collection load.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 19 -->
-    <article class="topic-card">
-        <h2 id="lambdas">
-            <input type="checkbox" class="topic-chk" data-topic="19">
-            <span>19. Lambdas & Closures</span>
-            <span class="topic-tag">Functions</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Lambdas are function literals that can be passed as arguments or stored in variables. A closure is a block of code that can access and modify variables declared in its outer scope.</p>
-            <h3>Internal Working</h3>
-            <p>Lambdas that do not capture outer variables compile to static singleton instances to prevent redundant allocations. Lambdas that capture variables (closures) instantiate a new `Function` object for each execution, wrapping captured primitives in mutable wrapper objects.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Decompiled IntRef wrapper reference
-final Ref.IntRef counter = new Ref.IntRef();</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Capturing variables in closures allocates wrapping reference classes (like `IntRef`), increasing heap utilization and memory pressure.</p>
-            <h3>Time Complexity</h3>
-            <p>Lambda instance allocation: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">How does Kotlin implement variable capture in closures at the JVM level?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">For immutable variables, the compiler passes their values as constructor arguments to the generated lambda class. For mutable variables, it wraps the variable in a helper reference object (such as <code>Ref.ObjectRef</code> or <code>Ref.IntRef</code>), allowing the lambda to read and write to the wrapped value.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">Explain the memory lifecycle of variables captured inside a returned lambda closure.</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Modifying captured variables inside concurrent, non-thread-safe lambdas, leading to race conditions.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 20 -->
-    <article class="topic-card">
-        <h2 id="inline-functions">
-            <input type="checkbox" class="topic-chk" data-topic="20">
-            <span>20. Inline Functions</span>
-            <span class="topic-tag">Compiler</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Marking a function as <code>inline</code> instructs the compiler to copy the function body and its lambda parameters directly to the call site, avoiding function call and object allocation overhead.</p>
-            <h3>Internal Working</h3>
-            <p>During compilation, the compiler inserts the bytecode of the inline function and its lambda parameters directly into the call site. This inline replacement allows for non-local returns (exiting the calling function directly from the lambda).</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Decompiled call site directly substitutes the lambda body
-System.out.println("Inlined body starts");</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Eliminates the allocation of intermediate `Function` instances on the heap, reducing garbage collection overhead during high-frequency execution.</p>
-            <h3>Time Complexity</h3>
-            <p>Function call overhead: O(0) (directly inlined).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">How does the 'inline' keyword affect performance and bytecode size?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Inlining eliminates lambda object allocations and virtual call overhead by copying the function body directly to the call site. However, inlining large functions with multiple call sites can significantly increase the compiled bytecode size (code bloat).</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How do non-local returns work in inline functions compared to standard nested loops?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Inlining large helper methods that do not take lambdas, causing unnecessary bytecode bloat.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 21 -->
-    <article class="topic-card">
-        <h2 id="crossinline">
-            <input type="checkbox" class="topic-chk" data-topic="21">
-            <span>21. Crossinline</span>
-            <span class="topic-tag">Compiler</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Use `crossinline` to prevent non-local returns when a lambda parameter is executed in another context (like inside a nested lambda or runnable).</p>
-            <h3>Internal Working</h3>
-            <p>The compiler inline replaces the function body but restricts the lambda from using non-local returns, ensuring that the lambda cannot exit the enclosing function context early.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Compiler blocks non-local return assertions during bytecode generation
-// onComplete() compiled safely within nested scopes</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Saves object allocations while maintaining local return control flow boundaries.</p>
-            <h3>Time Complexity</h3>
-            <p>Direct inline execution: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain the purpose of the crossinline keyword in Kotlin.</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text"><code>crossinline</code> prevents a lambda from executing a non-local <code>return</code>, allowing the lambda to be invoked inside nested scopes (like Runnable or callbacks) without breaking the flow control of the calling function.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">Why are non-local returns forbidden in crossinline parameters at a compilation level?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Using a raw return statement inside a crossinline lambda parameter (use a labeled return like `return@label` instead).</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 22 -->
-    <article class="topic-card">
-        <h2 id="noinline">
-            <input type="checkbox" class="topic-chk" data-topic="22">
-            <span>22. Noinline</span>
-            <span class="topic-tag">Compiler</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Use `noinline` to prevent a lambda parameter from being inlined, allowing it to be stored as an object or passed to other functions.</p>
-            <h3>Internal Working</h3>
-            <p>The enclosing function body is inlined, but the `noinline` lambda parameter is compiled as a standard `Function` interface object instance reference.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Receiver is kept as Function class reference
-public final void execute(Function0 callback) { ... }</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Allocates a `Function` object on the heap, allowing the reference to be stored in variables or passed to other methods.</p>
-            <h3>Time Complexity</h3>
-            <p>Lambda instance allocation: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">When would you use the noinline keyword on an inline function parameter?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Use <code>noinline</code> when you need to store the lambda parameter in a class property, return it from the function, or pass it as an argument to another non-inline function.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does using noinline affect compilation time and generated bytecode size?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Using `noinline` for all parameters of an inline function, which negates the benefits of inlining the function.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 23 -->
-    <article class="topic-card">
-        <h2 id="reified-types">
-            <input type="checkbox" class="topic-chk" data-topic="23">
-            <span>23. Reified Type Parameters</span>
-            <span class="topic-tag">Generics</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Marking a generic type parameter as <code>reified</code> preserves type information at runtime inside inline functions, bypassing JVM generic type erasure.</p>
-            <h3>Internal Working</h3>
-            <p>During function inlining, the compiler replaces the generic type placeholder with the concrete class reference (e.g. `String::class.java`) at the call site. This type parameter substitution is only possible because the function is inlined.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Generates direct type casting at the call site
-boolean check = "Text" instanceof String;</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Preserves type checks without the memory overhead of passing reflection class instances (`Class<T>`) manually.</p>
-            <h3>Time Complexity</h3>
-            <p>Type checks: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Why does 'reified' require the function to be marked 'inline'?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Because the JVM uses type erasure, which removes generic parameters at compile time. By inlining the function, the compiler copies the body to the call site and replaces the generic parameter placeholder with the concrete type class literal, bypassing type erasure. This replacement is only possible during function inlining.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">Can you access reified type parameters from Java code? Why or why not?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Attempting to call reified functions from Java code, which is not supported because Java does not support Kotlin's compile-time inlining.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 24 -->
-    <article class="topic-card">
-        <h2 id="delegation">
-            <input type="checkbox" class="topic-chk" data-topic="24">
-            <span>24. Class Delegation</span>
-            <span class="topic-tag">OOP</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Class delegation redirects interface methods to a specified delegate object using the <code>by</code> keyword, implementing the composition over inheritance pattern cleanly.</p>
-            <h3>Internal Working</h3>
-            <p>The compiler generates stub implementations for all interface methods inside the delegating class. These stub methods forward calls directly to the backing delegate field initialized in the constructor.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Forwards calls directly to backing delegate instance
-public void print() { this.delegate.print(); }</code></pre>
-            <h3>Memory Implications</h3>
-            <p>The delegating class instance holds a reference to the delegate object, slightly increasing reference memory allocation on the heap.</p>
-            <h3>Time Complexity</h3>
-            <p>Delegated call redirection: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain the internal working of class delegation (using the 'by' keyword) at the JVM level.</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">The compiler generates a private backing field to store the delegate instance. It then generates stub implementations for all interface methods that forward calls directly to the backing delegate instance, implementing composition automatically.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">What happens if you override a delegated interface method in the delegating class?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Assuming that class delegation creates a subtyping relationship between the delegating class and the delegate class.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 25 -->
-    <article class="topic-card">
-        <h2 id="property-delegates">
-            <input type="checkbox" class="topic-chk" data-topic="25">
-            <span>25. Property Delegates</span>
-            <span class="topic-tag">Delegation</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Property delegation redirects property read/write access calls to a helper delegate class using <code>by</code>.</p>
-            <h3>Internal Working</h3>
-            <p>The compiler generates a private backing field to store the delegate class instance and references it inside the getter/setter methods. It also creates a static `KProperty` metadata reference to describe the delegated property.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Redirects getter call to delegate instance getValue
-public final String getValue() { return (String)this.delegate.getValue(); }</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Delegating properties allocates the helper delegate objects on the heap. This can add up if used for multiple properties in large classes.</p>
-            <h3>Time Complexity</h3>
-            <p>Delegated access: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain the double-checked locking implementation inside Kotlin's default SynchronizedLazyImpl.</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">The default <code>by lazy</code> mode (<code>SYNCHRONIZED</code>) uses double-checked locking on a synchronization lock object. It checks the value reference, synchronizes on the lock if uninitialized, checks the value again, executes the lambda, and stores the result, ensuring thread safety.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">What are the differences in memory overhead between LazyThreadSafetyMode.SYNCHRONIZED and NONE?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Using the default synchronized lazy delegate for properties initialized exclusively on the Android main thread, incurring lock overhead.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 26 -->
-    <article class="topic-card">
-        <h2 id="generics">
-            <input type="checkbox" class="topic-chk" data-topic="26">
-            <span>26. Generics: Parameterized Types & Bounds</span>
-            <span class="topic-tag">Generics</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Generics define parameterized types, allowing classes and functions to operate on different types with type safety. Generic parameter types can be restricted using bounds (e.g. `T : Number`).</p>
-            <h3>Internal Working</h3>
-            <p>The JVM uses type erasure, which removes generic parameters at compile time. At runtime, the type parameter `T` is replaced by its upper bound (e.g. `java.lang.Object` or `java.lang.Number`), and the compiler inserts type casts where necessary.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// T is erased to Object at the JVM level
-private Object item;</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Generic parameters compile to object references, forcing primitive types (such as `Int`) to be boxed into their wrapper objects, which increases memory footprint.</p>
-            <h3>Time Complexity</h3>
-            <p>Type checks and casts: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain what type erasure is on the JVM and how it affects Kotlin Generics.</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Type erasure is a compiler process that removes generic parameter types at compile time to maintain compatibility with older JVM versions. The type parameter is replaced by its upper bound (or Object), and the compiler inserts casts at call sites to guarantee type safety.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does Kotlin use type bounds (e.g. out and in) to implement declaration-site variance?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Attempting to perform type checks (like `is T`) inside a non-inline generic function, which fails because the type parameter is erased at runtime.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 27 -->
-    <article class="topic-card">
-        <h2 id="variance">
-            <input type="checkbox" class="topic-chk" data-topic="27">
-            <span>27. Variance</span>
-            <span class="topic-tag">Generics</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Variance describes how subtyping relationships of generic parameters translate to subtyping relationships of the parameterized types (covariance, contravariance, and invariance).</p>
-            <h3>Internal Working</h3>
-            <p>Kotlin variance is resolved at compile time. <code>out</code> restricts type parameters to read-only (producer) positions. <code>in</code> restricts type parameters to write-only (consumer) positions. The compiler generates wildcards (`? extends T` and `? super T`) in the compiled JVM class signatures.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Wildcards are generated in compiled Java method signatures
-public void addAll(List<? extends Vehicle> items) { ... }</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Variance parameters are evaluated at compile time and do not add any additional memory overhead at runtime.</p>
-            <h3>Time Complexity</h3>
-            <p>Compile-time verification: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">What is the difference between covariance and contravariance?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Covariance (<code>out T</code>) allows you to read elements of a subclass, preserving subtyping. Contravariance (<code>in T</code>) allows you to write elements of a superclass, reversing subtyping. Invariance requires the types to match exactly.</div>
-                    <div class="qa-label followup">Senior-Level-Follow-up</div>
-                    <div class="qa-text">How does star projection (*) compile differently from Any?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Failing to declare a list parameter as covariant when it only reads elements, preventing callers from passing lists of subclasses.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 28 -->
-    <article class="topic-card">
-        <h2 id="covariance">
-            <input type="checkbox" class="topic-chk" data-topic="28">
-            <span>28. Covariance</span>
-            <span class="topic-tag">Generics</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Covariance allows a generic class to accept subclass type parameters (e.g. `Producer<Car>` as a subtype of `Producer<Vehicle>`), declared using `out`.</p>
-            <h3>Internal Working</h3>
-            <p>The compiler enforces that the type parameter is only used in read-only (producer) positions, preventing write operations that could violate type safety.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Covariant type signature translates to extends wildcard in Java
-List<? extends Vehicle> list;</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Evaluated at compile time; does not add runtime memory overhead.</p>
-            <h3>Time Complexity</h3>
-            <p>Type checks: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain covariance and how the out keyword protects type safety.</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Covariance (<code>out T</code>) restricts the type parameter to read-only positions. This prevents callers from inserting invalid type instances, protecting runtime type safety.</div>
-                    <div class="qa-label followup">Senior-Level-Follow-up</div>
-                    <div class="qa-text">How does Java's generic wildcards map to Kotlin's out keyword?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Using a covariant type as a parameter in a public mutable method.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 29 -->
-    <article class="topic-card">
-        <h2 id="contravariance">
-            <input type="checkbox" class="topic-chk" data-topic="29">
-            <span>29. Contravariance</span>
-            <span class="topic-tag">Generics</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Contravariance allows a generic class to accept superclass type parameters (e.g. `Consumer<Vehicle>` as a subtype of `Consumer<Car>`), declared using `in`.</p>
-            <h3>Internal Working</h3>
-            <p>The compiler enforces that the type parameter is only used in write-only (consumer) positions, preventing read operations that could violate type safety.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Contravariant type signature translates to super wildcard in Java
-List<? super Car> list;</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Evaluated at compile time; does not add runtime memory overhead.</p>
-            <h3>Time Complexity</h3>
-            <p>Type checks: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Explain contravariance and how the in keyword protects type safety.</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Contravariance (<code>in T</code>) restricts the type parameter to write-only positions. This guarantees that elements read from the collection match the expected base type, protecting type safety.</div>
-                    <div class="qa-label followup">Senior-Level-Follow-up</div>
-                    <div class="qa-text">How do you declare use-site contravariance inside function parameters?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Using a contravariant type as a return value in a public method.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 30 -->
-    <article class="topic-card">
-        <h2 id="destructuring">
-            <input type="checkbox" class="topic-chk" data-topic="30">
-            <span>30. Destructuring Declarations</span>
-            <span class="topic-tag">Syntax</span>
-        </h2>
-        <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Destructuring declarations unpack an object's properties into separate variables in a single statement.</p>
-            <h3>Internal Working</h3>
-            <p>Destructuring compiles to sequential calls to generated <code>componentN()</code> methods on the target object, resolving variables by position rather than name.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Kotlin
-val (name, age) = user
-// JVM Decompiled Java representation
-String name = user.component1();
-int age = user.component2();</code></pre>
-            <h3>Memory Implications</h3>
-            <p>No heap allocations are generated. However, it can allocate short-lived stack variable references for unpacked fields.</p>
-            <h3>Time Complexity</h3>
-            <p>Access operations: O(1).</p>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">How do destructuring declarations work, and what is a potential bug associated with them?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">They compile to position-based <code>componentN()</code> method calls. A potential bug occurs if constructor properties are reordered. Because variables are mapped by position, reordering constructor parameters can cause values to be assigned to the wrong variables.</div>
-                    <div class="qa-label followup">Senior-Level-Follow-up</div>
-                    <div class="qa-text">How can you support destructuring for custom non-data classes?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Assuming destructuring resolves variables by name rather than position.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 31 -->
-    <article class="topic-card">
         <h2 id="scope-functions">
-            <input type="checkbox" class="topic-chk" data-topic="31">
-            <span>31. Scope Functions (let, run, apply, also, with)</span>
-            <span class="topic-tag">OOP</span>
+            <input type="checkbox" class="topic-chk" data-topic="12">
+            <span>12. Scope Functions</span>
+            <span class="topic-tag">Basics</span>
         </h2>
         <div class="topic-body">
-            <h3>Definition</h3>
-            <p>Scope functions execute a block of code within the context of an object, altering how variables are referenced and returned inside the block.</p>
-            <h3>Internal Working</h3>
-            <p>These functions are implemented as inline extensions. During compilation, the lambda bodies are copied directly to the call site, avoiding class instantiation and method redirection overhead.</p>
-            <h3>JVM Translation</h3>
-            <pre><code class="language-kotlin">// Compiled directly inline without creating Function instances
-System.out.println(hotel.getName());</code></pre>
-            <h3>Memory Implications</h3>
-            <p>Because they are inlined, scope functions do not allocate intermediate lambda objects on the heap, avoiding garbage collection pressure.</p>
-            <h3>Time Complexity</h3>
-            <p>Direct inline execution: O(1).</p>
+            <h3>Quick Cheat Sheet</h3>
+            <div class="comparison-table-wrapper">
+                <table class="comparison-table">
+                    <thead>
+                        <tr>
+                            <th>Function</th>
+                            <th>Context Object</th>
+                            <th>Return Value</th>
+                            <th>Typical Use Case</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td><code>let</code></td>
+                            <td><code>it</code></td>
+                            <td>Lambda result</td>
+                            <td>Null check wrappers and object mappings</td>
+                        </tr>
+                        <tr>
+                            <td><code>run</code></td>
+                            <td><code>this</code></td>
+                            <td>Lambda result</td>
+                            <td>Initialization and computation in one block</td>
+                        </tr>
+                        <tr>
+                            <td><code>with</code></td>
+                            <td><code>this</code></td>
+                            <td>Lambda result</td>
+                            <td>Grouping member function calls on an object</td>
+                        </tr>
+                        <tr>
+                            <td><code>apply</code></td>
+                            <td><code>this</code></td>
+                            <td>Context object</td>
+                            <td>Object configuration (builder pattern)</td>
+                        </tr>
+                        <tr>
+                            <td><code>also</code></td>
+                            <td><code>it</code></td>
+                            <td>Context object</td>
+                            <td>Side effects, logging, and validations</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">Compare let, run, apply, also, and with.</div>
+                    <div class="qa-label question">Compare let and run in terms of context access and return type.</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text"><code>let</code> (receiver is `it`, returns lambda result), <code>run</code> (receiver is `this`, returns lambda result), <code>with</code> (receiver is `this`, returns lambda result, passed as parameter), <code>apply</code> (receiver is `this`, returns receiver instance), <code>also</code> (receiver is `it`, returns receiver instance).</div>
-                    <div class="qa-label followup">Senior-Level-Follow-up</div>
-                    <div class="qa-text">What are the bytecode differences between let and run when processing non-null operations?</div>
+                    <div class="qa-text">Both return the lambda result. The difference is how they access the context object: <code>let</code> accesses the object via the implicit parameter <code>it</code>, while <code>run</code> accesses the object via <code>this</code>, allowing you to call members directly without the object reference prefix.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">What is the performance overhead of using scope functions? (None, they are inline functions, compiling to flat, standard sequential bytecode).</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Nesting multiple <code>let</code> blocks, which shadows the implicit <code>it</code> parameter and reduces code readability.</div>
+                    <div class="qa-text">Nesting multiple `let` blocks, which makes code difficult to read (use helper functions or clear parameter naming instead).</div>
                 </div>
             </div>
         </div>

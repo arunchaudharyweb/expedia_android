@@ -74,11 +74,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // Section configurations for metadata calculation
     const sectionConfigs = {
-        'r1-kotlin': { title: 'Kotlin Fundamentals', path: 'sections/r1-kotlin.html', count: 31 },
-        'r1-coroutines': { title: 'Coroutines & Concurrency', path: 'sections/r1-coroutines.html', count: 23 },
-        'r1-reactive': { title: 'Reactive Programming', path: 'sections/r1-reactive.html', count: 8 },
-        'r1-compose': { title: 'Jetpack Compose', path: 'sections/r1-compose.html', count: 16 },
-        'r1-android': { title: 'Android Platform & Internals', path: 'sections/r1-android.html', count: 18 },
+        'r1-kotlin': { title: 'Kotlin Fundamentals', path: 'sections/r1-kotlin.html', count: 12 },
+        'r1-coroutines': { title: 'Coroutines & Concurrency', path: 'sections/r1-coroutines.html', count: 10 },
+        'r1-reactive': { title: 'Reactive Programming', path: 'sections/r1-reactive.html', count: 4 },
+        'r1-compose': { title: 'Jetpack Compose', path: 'sections/r1-compose.html', count: 8 },
+        'r1-android': { title: 'Android Platform & Internals', path: 'sections/r1-android.html', count: 10 },
         'r2-architecture': { title: 'Android Architecture', path: 'sections/r2-architecture.html', count: 6 },
         'r2-solution-design': { title: 'SDE-2 Solution Design', path: 'sections/r2-solution-design.html', count: 9 },
         'r2-live-coding': { title: 'Live Coding Prep', path: 'sections/r2-live-coding.html', count: 8 },

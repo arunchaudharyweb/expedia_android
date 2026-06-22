@@ -1,62 +1,37 @@
 <div class="section-content">
-    <h1>Live Coding (Round 2 Implementations)</h1>
+    <h1>Section 8: Live Coding Preparation</h1>
     <div class="section-meta">
-        <span>⏱ 30 min read</span>
-        <span>✓ Round 2 Core</span>
+        <span>⏱ 20 min read</span>
+        <span>✓ Part 2 Design</span>
     </div>
-
+    
     <p class="section-intro">
-        Practical coding exercises with naive solutions, clean implementations, and unit test suites using JUnit 4, MockK, and <code>runTest</code>.
+        Streamlined live coding problems. Each contains a naive example, clean production-ready Kotlin solution, and unit test assertions.
     </p>
 
     <!-- PROBLEM 1 -->
     <article class="topic-card">
-        <h2 id="live-debounced-search">
+        <h2 id="live-search">
             <input type="checkbox" class="topic-chk" data-topic="1">
             <span>Problem 1: Debounced Search Autocomplete</span>
             <span class="topic-tag">Search</span>
         </h2>
         <div class="topic-body">
-            <p><strong>Interviewer Prompt:</strong></p>
-            <p class="alert-note">
-                "Implement a search text handler that takes user input queries, waits for a 300ms pause in typing, and then fetches results from a remote API. Ensure that in-flight requests are cancelled if the user types a new query, and handle network errors without crashing."
-            </p>
-
-            <div class="lc-section naive">
-                <div class="lc-title naive">Naive Solution & Drawbacks</div>
-                <p>
-                    A naive solution might use handlers or manually launch and cancel coroutine jobs inside a text watcher. This approach is prone to race conditions, reference leaks, and manual state synchronization issues.
-                </p>
-                <pre><code class="language-kotlin">// NAIVE: Manual job cancel pattern
-var searchJob: Job? = null
-fun onTextChanged(newText: String) {
-    searchJob?.cancel() // Manual cancellation prone to race conditions
-    searchJob = scope.launch {
-        delay(300)
-        try {
-            val results = api.search(newText)
-            updateUI(results)
-        } catch (e: Exception) {
-            // Swallowing exceptions can cause UI hang
-        }
-    }
-}</code></pre>
-            </div>
-
-            <div class="lc-section solution">
-                <div class="lc-title solution">Clean Kotlin Solution</div>
-                <pre><code class="language-kotlin">import kotlinx.coroutines.FlowPreview
+            <h3>Prompt</h3>
+            <p>Implement a search text handler that takes user input queries, waits for a 300ms pause in typing, and then fetches results from a remote API. Ensure that in-flight requests are cancelled if the user types a new query, and handle network errors without crashing.</p>
+            <h3>Clean Kotlin Solution</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.flow.*
 
 class SearchViewModel(private val apiService: ApiService) : ViewModel() {
     private val queryFlow = MutableStateFlow("")
 
-    // Expose search results stream to UI
     @OptIn(FlowPreview::class)
     val searchResults: StateFlow<SearchResult> = queryFlow
-        .debounce(300) // Delay emission for 300ms
+        .debounce(300) // Delay execution by 300ms
         .filter { it.isNotBlank() } // Skip empty inputs
-        .flatMapLatest { query -> // Cancel previous search execution
+        .distinctUntilChanged() // Ignore duplicate values
+        .flatMapLatest { query -> // Cancel previous in-flight search requests
             flow {
                 emit(SearchResult.Loading)
                 val results = apiService.searchHotels(query)
@@ -82,50 +57,13 @@ sealed interface SearchResult {
     data class Success(val hotels: List<String>) : SearchResult
     data class Error(val message: String) : SearchResult
 }</code></pre>
-            </div>
-
-            <div class="lc-section tests">
-                <div class="lc-title tests">Unit Tests</div>
-                <pre><code class="language-kotlin">import io.mockk.*
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.*
-import org.junit.*
-import app.cash.turbine.test
-
-@OptIn(ExperimentalCoroutinesApi::class)
-class SearchViewModelTest {
-    private val apiService = mockk<ApiService>()
-    private lateinit var viewModel: SearchViewModel
-
-    @Test
-    fun `test debounced search emits results after typing stops`() = runTest {
-        coEvery { apiService.searchHotels("Expedia") } returns listOf("Hotel A", "Hotel B")
-        viewModel = SearchViewModel(apiService)
-
-        viewModel.searchResults.test {
-            Assert.assertEquals(SearchResult.Idle, awaitItem())
-            
-            viewModel.onQueryChanged("Expedia")
-            // Advance virtual time by 300ms to trigger debounce
-            delay(301)
-            
-            Assert.assertEquals(SearchResult.Loading, awaitItem())
-            Assert.assertEquals(SearchResult.Success(listOf("Hotel A", "Hotel B")), awaitItem())
-        }
-    }
-}</code></pre>
-            </div>
-
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label followup">Follow-Up Questions</div>
-                    <div class="qa-text">
-                        <ol>
-                            <li>How does <code>flatMapLatest</code> cancel the active API call?</li>
-                            <li>What happens to exceptions thrown by <code>apiService.searchHotels</code>, and how does the stream recover?</li>
-                            <li>How would you limit requests if the user types the same query repeatedly? (Use <code>distinctUntilChanged()</code>).</li>
-                        </ol>
-                    </div>
+                    <div class="qa-label question">Why is the catch operator placed inside flatMapLatest?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">If <code>catch</code> is placed at the end of the Flow chain, it will intercept exceptions but terminate the entire stream, stopping any future search queries. Placing <code>catch</code> inside the nested <code>flatMapLatest</code> flow intercepts the error, emits a failure state, and keeps the parent query stream alive for subsequent queries.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using a standard `flatMapMerge` instead of `flatMapLatest`, which processes queries concurrently without cancelling obsolete requests.</div>
                 </div>
             </div>
         </div>
@@ -133,43 +71,18 @@ class SearchViewModelTest {
 
     <!-- PROBLEM 2 -->
     <article class="topic-card">
-        <h2 id="live-retry-backoff">
+        <h2 id="live-retry">
             <input type="checkbox" class="topic-chk" data-topic="2">
             <span>Problem 2: Retry with Exponential Backoff</span>
             <span class="topic-tag">Async</span>
         </h2>
         <div class="topic-body">
-            <p><strong>Interviewer Prompt:</strong></p>
-            <p class="alert-note">
-                "Write a generic suspending function that retries a network request up to N times, applying an exponential backoff delay (e.g. 1s, 2s, 4s...) between attempts. The retry loop should stop immediately if a non-retryable exception is encountered."
-            </p>
-
-            <div class="lc-section naive">
-                <div class="lc-title naive">Naive Solution & Drawbacks</div>
-                <p>
-                    A naive solution uses a recursive loop with fixed delays. This approach is hard to generalize, lacks parameterization, and cannot handle cancellation signals correctly.
-                </p>
-                <pre><code class="language-kotlin">// NAIVE: Recursive fixed delay
-suspend fun fetchWithRetry(retries: Int): String {
-    return try {
-        api.fetch()
-    } catch (e: Exception) {
-        if (retries > 0) {
-            delay(2000) // Fixed delay
-            fetchWithRetry(retries - 1)
-        } else {
-            throw e
-        }
-    }
-}</code></pre>
-            </div>
-
-            <div class="lc-section solution">
-                <div class="lc-title solution">Clean Kotlin Solution</div>
-                <pre><code class="language-kotlin">import kotlinx.coroutines.delay
+            <h3>Prompt</h3>
+            <p>Write a generic suspending function that retries a network request up to N times, applying an exponential backoff delay (e.g. 1s, 2s, 4s...) between attempts. The retry loop should stop immediately if a non-retryable exception is encountered.</p>
+            <h3>Clean Kotlin Solution</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.delay
 import java.io.IOException
 
-// Generic backoff retry wrapper
 suspend fun &lt;T&gt; retryWithBackoff(
     times: Int = 3,
     initialDelayMs: Long = 1000,
@@ -178,11 +91,11 @@ suspend fun &lt;T&gt; retryWithBackoff(
     block: suspend () -> T
 ): T {
     var currentDelay = initialDelayMs
-    repeat(times - 1) { attempt ->
+    repeat(times - 1) {
         try {
-            return block() // Success: return result
+            return block() // Success: return result immediately
         } catch (e: Throwable) {
-            // Stop retrying if the exception is non-retryable or cancellation is requested
+            // Terminate if the exception is non-retryable
             if (!isRetryable(e)) throw e
             
             delay(currentDelay)
@@ -191,45 +104,13 @@ suspend fun &lt;T&gt; retryWithBackoff(
     }
     return block() // Final attempt: propagates any exceptions
 }</code></pre>
-            </div>
-
-            <div class="lc-section tests">
-                <div class="lc-title tests">Unit Tests</div>
-                <pre><code class="language-kotlin">import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.runTest
-import org.junit.Assert
-import org.junit.Test
-import java.io.IOException
-
-@OptIn(ExperimentalCoroutinesApi::class)
-class BackoffRetryTest {
-    @Test
-    fun `test successful first attempt returns result immediately`() = runTest {
-        val result = retryWithBackoff(times = 3) {
-            "Success"
-        }
-        Assert.assertEquals("Success", result)
-    }
-
-    @Test(expected = RuntimeException::class)
-    fun `test non-retryable exception terminates immediately`() = runTest {
-        retryWithBackoff(times = 3, isRetryable = { it is IOException }) {
-            throw RuntimeException("Fatal Error")
-        }
-    }
-}</code></pre>
-            </div>
-
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label followup">Follow-Up Questions</div>
-                    <div class="qa-text">
-                        <ol>
-                            <li>How does this implementation handle coroutine cancellation?</li>
-                            <li>Why does the final attempt execute outside the loop?</li>
-                            <li>How would you introduce jitter to prevent synchronized request spikes? (Add a random variation to the delay).</li>
-                        </ol>
-                    </div>
+                    <div class="qa-label question">How does this implementation respect coroutine cancellation?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The <code>delay()</code> function is cancellable. If the coroutine is cancelled, <code>delay()</code> throws a <code>CancellationException</code>, exiting the retry loop immediately. It also propagates the cancellation exception up the tree, supporting structured cancellation.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Swallowing all exceptions (including `CancellationException`) inside the catch block, which breaks coroutine cancellation.</div>
                 </div>
             </div>
         </div>
@@ -237,41 +118,17 @@ class BackoffRetryTest {
 
     <!-- PROBLEM 3 -->
     <article class="topic-card">
-        <h2 id="live-ttl-cache">
+        <h2 id="live-cache">
             <input type="checkbox" class="topic-chk" data-topic="3">
             <span>Problem 3: Thread-Safe In-Memory Cache with TTL</span>
             <span class="topic-tag">Caching</span>
         </h2>
         <div class="topic-body">
-            <p><strong>Interviewer Prompt:</strong></p>
-            <p class="alert-note">
-                "Implement a generic, thread-safe, in-memory cache that expires entries after a configurable Time-To-Live (TTL). Ensure the implementation is testable with custom time providers."
-            </p>
+            <h3>Prompt</h3>
+            <p>Implement a generic, thread-safe, in-memory cache that expires entries after a configurable Time-To-Live (TTL). Ensure the implementation is testable with custom time providers.</p>
+            <h3>Clean Kotlin Solution</h3>
+            <pre><code class="language-kotlin">import java.util.concurrent.ConcurrentHashMap
 
-            <div class="lc-section naive">
-                <div class="lc-title naive">Naive Solution & Drawbacks</div>
-                <p>
-                    A naive solution uses a standard <code>HashMap</code> and system clock calls (<code>System.currentTimeMillis()</code>). This approach is not thread-safe and is difficult to test because it relies on the real system clock.
-                </p>
-                <pre><code class="language-kotlin">// NAIVE: Unsafe static map
-object NaiveCache {
-    val cache = HashMap<String, Pair<Any, Long>>()
-    fun put(key: String, value: Any, ttl: Long) {
-        cache[key] = Pair(value, System.currentTimeMillis() + ttl)
-    }
-    fun get(key: String): Any? {
-        val entry = cache[key] ?: return null
-        if (System.currentTimeMillis() > entry.second) return null // hard to test time shifts
-        return entry.first
-    }
-}</code></pre>
-            </div>
-
-            <div class="lc-section solution">
-                <div class="lc-title solution">Clean Kotlin Solution</div>
-                <pre><code class="language-kotlin">import java.util.concurrent.ConcurrentHashMap
-
-// Interface to abstract time generation
 fun interface TimeProvider {
     fun currentTimeMillis(): Long
 }
@@ -290,7 +147,7 @@ class TtlCache&lt;K : Any, V : Any&gt;(
     fun get(key: K): V? {
         val entry = store[key] ?: return null
         if (timeProvider.currentTimeMillis() > entry.expiryTime) {
-            store.remove(key) // Clean up expired entry
+            store.remove(key) // Evict expired entry
             return null
         }
         return entry.value
@@ -300,44 +157,13 @@ class TtlCache&lt;K : Any, V : Any&gt;(
 
     private data class CacheEntry<T>(val value: T, val expiryTime: Long)
 }</code></pre>
-            </div>
-
-            <div class="lc-section tests">
-                <div class="lc-title tests">Unit Tests</div>
-                <pre><code class="language-kotlin">import org.junit.Assert
-import org.junit.Test
-
-class TtlCacheTest {
-    @Test
-    fun `test cache expires entry after TTL duration`() {
-        var mockTime = 1000L
-        val fakeTimeProvider = TimeProvider { mockTime }
-        
-        val cache = TtlCache<String, String>(ttlMs = 1000, timeProvider = fakeTimeProvider)
-        cache.put("key", "value")
-
-        // Value is present before expiry
-        Assert.assertEquals("value", cache.get("key"))
-
-        // Fast-forward time past the TTL threshold
-        mockTime += 1001
-
-        // Value should be expired
-        Assert.assertNull(cache.get("key"))
-    }
-}</code></pre>
-            </div>
-
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label followup">Follow-Up Questions</div>
-                    <div class="qa-text">
-                        <ol>
-                            <li>How does <code>ConcurrentHashMap</code> guarantee thread safety?</li>
-                            <li>What happens to expired entries that are never read again? (They remain in memory until <code>clear()</code> is called. This can be resolved by scheduling cleanups using a timer).</li>
-                            <li>How would you add a size limit to this cache? (Combine with an LRU cache eviction policy).</li>
-                        </ol>
-                    </div>
+                    <div class="qa-label question">Why is TimeProvider abstracting System.currentTimeMillis()?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">To support unit testing. By injecting a mock or fake <code>TimeProvider</code>, we can manipulate time in tests (e.g. fast-forwarding time past the TTL threshold) and verify eviction behavior without waiting for real clock ticks.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Using a standard `HashMap` in multithreaded environments, which can cause race conditions or infinite loops.</div>
                 </div>
             </div>
         </div>
@@ -345,47 +171,28 @@ class TtlCacheTest {
 
     <!-- PROBLEM 4 -->
     <article class="topic-card">
-        <h2 id="live-mvi-viewmodel">
+        <h2 id="live-mvi">
             <input type="checkbox" class="topic-chk" data-topic="4">
             <span>Problem 4: MVI ViewModel & Reducer Pattern</span>
             <span class="topic-tag">MVI</span>
         </h2>
         <div class="topic-body">
-            <p><strong>Interviewer Prompt:</strong></p>
-            <p class="alert-note">
-                "Implement an Android ViewModel using the MVI pattern. The class should expose a single StateFlow for state and process inputs using a pure reducer function."
-            </p>
-
-            <div class="lc-section naive">
-                <div class="lc-title naive">Naive Solution & Drawbacks</div>
-                <p>
-                    A naive solution uses multiple independent MutableStateFlows inside the ViewModel. This makes it difficult to track state changes and can lead to race conditions where different parts of the UI display inconsistent state.
-                </p>
-                <pre><code class="language-kotlin">// NAIVE: Multiple state flows
-val isHotelLoading = MutableStateFlow(false)
-val hotelList = MutableStateFlow<List<String>>(emptyList())
-val errorMessage = MutableStateFlow<String?>(null)
-
-// Hard to test state transitions atomic updates</code></pre>
-            </div>
-
-            <div class="lc-section solution">
-                <div class="lc-title solution">Clean Kotlin Solution</div>
-                <pre><code class="language-kotlin">import androidx.lifecycle.ViewModel
+            <h3>Prompt</h3>
+            <p>Implement an Android ViewModel using the MVI pattern. The class should expose a single StateFlow for state and process inputs using a pure reducer function.</p>
+            <h3>Clean Kotlin Solution</h3>
+            <pre><code class="language-kotlin">import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.launch
 
-// 1. Immutable State
 data class HotelUiState(
     val hotels: List<String> = emptyList(),
     val isLoading: Boolean = false,
     val error: String? = null
 )
 
-// 2. Sealed Intents
 sealed interface HotelIntent {
     object LoadHotels : HotelIntent
     data class ApplyFilter(val query: String) : HotelIntent
@@ -405,7 +212,6 @@ class HotelViewModel(private val repository: HotelRepository) : ViewModel() {
     }
 
     private suspend fun loadHotels() {
-        // Reducer updates state atomically
         _uiState.value = _uiState.value.copy(isLoading = true, error = null)
         try {
             val list = repository.fetchHotels()
@@ -420,49 +226,13 @@ class HotelViewModel(private val repository: HotelRepository) : ViewModel() {
         _uiState.value = _uiState.value.copy(hotels = filtered)
     }
 }</code></pre>
-            </div>
-
-            <div class="lc-section tests">
-                <div class="lc-title tests">Unit Tests</div>
-                <pre><code class="language-kotlin">import io.mockk.*
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.runTest
-import org.junit.Assert
-import org.junit.Test
-import app.cash.turbine.test
-
-class HotelViewModelTest {
-    private val repository = mockk<HotelRepository>()
-
-    @Test
-    fun `test LoadHotels intent updates state correctly`() = runTest {
-        coEvery { repository.fetchHotels() } returns listOf("Sheraton", "Marriott")
-        val viewModel = HotelViewModel(repository)
-
-        viewModel.uiState.test {
-            // Initial state
-            Assert.assertEquals(HotelUiState(), awaitItem())
-            
-            viewModel.processIntent(HotelIntent.LoadHotels)
-            
-            // Verifying state transitions
-            Assert.assertEquals(HotelUiState(isLoading = true), awaitItem())
-            Assert.assertEquals(HotelUiState(hotels = listOf("Sheraton", "Marriott"), isLoading = false), awaitItem())
-        }
-    }
-}</code></pre>
-            </div>
-
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label followup">Follow-Up Questions</div>
-                    <div class="qa-text">
-                        <ol>
-                            <li>What are the benefits of exposing a single UI state object?</li>
-                            <li>How does thread safety work when updating <code>_uiState.value</code>?</li>
-                            <li>How do you handle side effects (like showing a Toast) in an MVI architecture? (Expose a separate SharedFlow for side effects).</li>
-                        </ol>
-                    </div>
+                    <div class="qa-label question">What are the benefits of exposing a single UI state object?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">It creates a single source of truth for the View. It prevents UI bugs where different variables (like loading state and lists) are out of sync, and simplifies state reproduction during unit testing.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Exposing multiple independent state flows in the ViewModel, leading to state synchronization issues.</div>
                 </div>
             </div>
         </div>
@@ -470,37 +240,16 @@ class HotelViewModelTest {
 
     <!-- PROBLEM 5 -->
     <article class="topic-card">
-        <h2 id="live-offline-repo">
+        <h2 id="live-offline">
             <input type="checkbox" class="topic-chk" data-topic="5">
             <span>Problem 5: Offline-First Repository Flow</span>
             <span class="topic-tag">Offline-First</span>
         </h2>
         <div class="topic-body">
-            <p><strong>Interviewer Prompt:</strong></p>
-            <p class="alert-note">
-                "Implement a repository that retrieves cached data immediately and then fetches fresh data from the network. The repository should save the network results to the local database and emit the updated listings via a Flow, handling errors gracefully."
-            </p>
-
-            <div class="lc-section naive">
-                <div class="lc-title naive">Naive Solution & Drawbacks</div>
-                <p>
-                    A naive solution returns a single object containing either the cache or the network response. This does not provide a reactive data stream and requires the UI to coordinate data fetches.
-                </p>
-                <pre><code class="language-kotlin">// NAIVE: Direct callback fetch
-fun loadData(callback: (List<String>) -> Unit) {
-    val cached = database.load()
-    callback(cached) // Emit cache
-    try {
-        val network = api.fetch()
-        database.save(network)
-        callback(network) // Emit network
-    } catch(e: Exception) {}
-}</code></pre>
-            </div>
-
-            <div class="lc-section solution">
-                <div class="lc-title solution">Clean Kotlin Solution</div>
-                <pre><code class="language-kotlin">import kotlinx.coroutines.flow.*
+            <h3>Prompt</h3>
+            <p>Implement a repository that retrieves cached data immediately and then fetches fresh data from the network. Save the network results to the local database and emit the updated listings via a Flow, handling errors gracefully.</p>
+            <h3>Clean Kotlin Solution</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.flow.*
 
 interface LocalSource {
     fun getCachedData(): Flow<List<String>>
@@ -515,11 +264,10 @@ class OfflineFirstRepository(
     private val local: LocalSource,
     private val remote: RemoteSource
 ) {
-    // Single source of truth stream
     fun getHotelsStream(): Flow<Resource<List<String>>> = flow {
         emit(Resource.Loading(null))
         
-        // 1. Emit current cache
+        // 1. Emit current cache immediately
         val initialCache = local.getCachedData().firstOrNull() ?: emptyList()
         emit(Resource.Loading(initialCache))
         
@@ -533,7 +281,6 @@ class OfflineFirstRepository(
                 emit(Resource.Success(updatedList))
             }
         } catch (e: Exception) {
-            // Emit error state with fallback cached data
             emit(Resource.Error(e.message ?: "Network error", initialCache))
         }
     }
@@ -544,51 +291,13 @@ sealed class Resource<out T> {
     data class Success<out T>(val data: T) : Resource<T>()
     data class Error<out T>(val message: String, val data: T?) : Resource<T>()
 }</code></pre>
-            </div>
-
-            <div class="lc-section tests">
-                <div class="lc-title tests">Unit Tests</div>
-                <pre><code class="language-kotlin">import io.mockk.*
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.flow.flowOf
-import kotlinx.coroutines.test.runTest
-import org.junit.Assert
-import org.junit.Test
-import app.cash.turbine.test
-
-class OfflineFirstRepositoryTest {
-    private val local = mockk<LocalSource>()
-    private val remote = mockk<RemoteSource>()
-    private val repository = OfflineFirstRepository(local, remote)
-
-    @Test
-    fun `test cache is emitted first then network update`() = runTest {
-        coEvery { local.getCachedData() } returns flowOf(listOf("Cached Hotel"))
-        coEvery { remote.fetchFreshData() } returns listOf("Cached Hotel", "Fresh Hotel")
-        coEvery { local.saveCachedData(any()) } just Runs
-
-        repository.getHotelsStream().test {
-            Assert.assertEquals(Resource.Loading(null), awaitItem())
-            Assert.assertEquals(Resource.Loading(listOf("Cached Hotel")), awaitItem())
-            
-            // Wait for DB write and collection transition
-            Assert.assertEquals(Resource.Success(listOf("Cached Hotel")), awaitItem())
-            awaitComplete()
-        }
-    }
-}</code></pre>
-            </div>
-
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label followup">Follow-Up Questions</div>
-                    <div class="qa-text">
-                        <ol>
-                            <li>Why do we call <code>firstOrNull()</code> on the database flow instead of collecting it indefinitely inside the initial loader block?</li>
-                            <li>How does this pattern implement a single source of truth?</li>
-                            <li>How do you handle data deletions or updates to deleted items during background synchronization?</li>
-                        </ol>
-                    </div>
+                    <div class="qa-label question">Why do we use firstOrNull() on the database flow instead of collecting it?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">We call <code>firstOrNull()</code> to get the initial cached snapshot to show immediate data. We don't want to start an infinite collection loop inside the repository's loader block, which would block execution of the network request. Once the network request finishes, we collect the database stream dynamically.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Emitting network results directly to the UI without writing them to the database first, violating the single source of truth principle.</div>
                 </div>
             </div>
         </div>
@@ -596,35 +305,16 @@ class OfflineFirstRepositoryTest {
 
     <!-- PROBLEM 6 -->
     <article class="topic-card">
-        <h2 id="live-sequential-queue">
+        <h2 id="live-queue">
             <input type="checkbox" class="topic-chk" data-topic="6">
             <span>Problem 6: Cancellable Sequential Execution Queue</span>
             <span class="topic-tag">Queue</span>
         </h2>
         <div class="topic-body">
-            <p><strong>Interviewer Prompt:</strong></p>
-            <p class="alert-note">
-                "Implement a task execution queue that processes image uploads sequentially, one at a time. The queue should support canceling a specific task and must prevent coroutine context leaks."
-            </p>
-
-            <div class="lc-section naive">
-                <div class="lc-title naive">Naive Solution & Drawbacks</div>
-                <p>
-                    A naive solution uses an unstructured list of coroutine jobs, which can leak jobs if tasks are cancelled, and does not enforce sequential execution safely.
-                </p>
-                <pre><code class="language-kotlin">// NAIVE: Launching jobs inside a loop
-val activeJobs = mutableMapOf<String, Job>()
-fun uploadImage(imageId: String) {
-    activeJobs[imageId] = scope.launch {
-        // Runs concurrently instead of sequentially
-        uploader.upload(imageId)
-    }
-}</code></pre>
-            </div>
-
-            <div class="lc-section solution">
-                <div class="lc-title solution">Clean Kotlin Solution</div>
-                <pre><code class="language-kotlin">import kotlinx.coroutines.*
+            <h3>Prompt</h3>
+            <p>Implement a task execution queue that processes image uploads sequentially, one at a time. The queue should support canceling a specific task and must prevent coroutine context leaks.</p>
+            <h3>Clean Kotlin Solution</h3>
+            <pre><code class="language-kotlin">import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import java.util.concurrent.ConcurrentHashMap
 
@@ -633,7 +323,6 @@ class UploadQueue(private val scope: CoroutineScope) {
     private val activeJobs = ConcurrentHashMap<String, Job>()
 
     init {
-        // Start queue consumer processing loop
         scope.launch {
             for (task in taskChannel) {
                 // Execute tasks sequentially
@@ -647,7 +336,7 @@ class UploadQueue(private val scope: CoroutineScope) {
                     }
                 }
                 activeJobs[task.id] = job
-                job.join() // Wait for current task to complete before processing the next
+                job.join() // Wait for task completion before continuing the loop
             }
         }
     }
@@ -663,49 +352,13 @@ class UploadQueue(private val scope: CoroutineScope) {
 
     private data class UploadTask(val id: String, val action: suspend () -> Unit)
 }</code></pre>
-            </div>
-
-            <div class="lc-section tests">
-                <div class="lc-title tests">Unit Tests</div>
-                <pre><code class="language-kotlin">import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.delay
-import kotlinx.coroutines.test.*
-import org.junit.Assert
-import org.junit.Test
-
-@OptIn(ExperimentalCoroutinesApi::class)
-class UploadQueueTest {
-    @Test
-    fun `test tasks execute sequentially in order`() = runTest {
-        val queue = UploadQueue(this)
-        val executionOrder = mutableListOf<Int>()
-
-        queue.enqueue("1") {
-            delay(100)
-            executionOrder.add(1)
-        }
-        queue.enqueue("2") {
-            executionOrder.add(2)
-        }
-
-        // Wait for all queue tasks to finish
-        advanceUntilIdle()
-
-        Assert.assertEquals(listOf(1, 2), executionOrder)
-    }
-}</code></pre>
-            </div>
-
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label followup">Follow-Up Questions</div>
-                    <div class="qa-text">
-                        <ol>
-                            <li>How does <code>job.join()</code> guarantee sequential execution?</li>
-                            <li>What happens to pending tasks in the channel if the parent coroutine scope is cancelled?</li>
-                            <li>How would you handle task priority within this sequential execution queue? (Replace <code>Channel</code> with a priority queue).</li>
-                        </ol>
-                    </div>
+                    <div class="qa-label question">How does job.join() guarantee sequential task execution?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">The consumer loop reads tasks from the channel. For each task, it spawns a coroutine and stores the reference. By calling <code>job.join()</code>, it suspends the consumer loop until the active task completes or is cancelled, ensuring that the next task in the queue is not processed until the current one exits.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Launching tasks inside a loop without calling join(), which causes them to execute concurrently.</div>
                 </div>
             </div>
         </div>
@@ -713,39 +366,16 @@ class UploadQueueTest {
 
     <!-- PROBLEM 7 -->
     <article class="topic-card">
-        <h2 id="live-solid-refactoring">
+        <h2 id="live-solid">
             <input type="checkbox" class="topic-chk" data-topic="7">
             <span>Problem 7: SOLID Clean Code Refactoring</span>
             <span class="topic-tag">SOLID</span>
         </h2>
         <div class="topic-body">
-            <p><strong>Interviewer Prompt:</strong></p>
-            <p class="alert-note">
-                "The following class is highly coupled, violates Single Responsibility Principle, and is untestable because it instantiates its own dependencies. Refactor it using SOLID principles and construct a mockable implementation."
-            </p>
-
-            <div class="lc-section naive">
-                <div class="lc-title naive">Naive Solution & Drawbacks</div>
-                <pre><code class="language-kotlin">// NAIVE: Untestable monolith class
-class HotelBookingService {
-    private val db = RoomDatabase.Builder().build() // Coupled to DB
-    private val api = Retrofit.Builder().build().create(Api::class.java) // Coupled to API
-
-    fun book(hotelId: String, user: String) {
-        // Violates Single Responsibility: does logging, DB write, net call, and email
-        println("Booking hotel $hotelId for $user")
-        api.postBooking(hotelId, user)
-        db.saveBooking(hotelId, user)
-        // Hardcoded email client send
-        EmailClient.send("Success", user)
-    }
-}</code></pre>
-            </div>
-
-            <div class="lc-section solution">
-                <div class="lc-title solution">Clean Kotlin Solution</div>
-                <pre><code class="language-kotlin">// 1. Define clean interfaces (Interface Segregation & Dependency Inversion)
-interface BookingRepository {
+            <h3>Prompt</h3>
+            <p>The following class is highly coupled, violates Single Responsibility Principle, and is untestable because it instantiates its own dependencies. Refactor it using SOLID principles and construct a mockable implementation.</p>
+            <h3>Clean Kotlin Solution</h3>
+            <pre><code class="language-kotlin">interface BookingRepository {
     suspend fun saveBookingLocal(hotelId: String, userId: String)
     suspend fun confirmBookingRemote(hotelId: String, userId: String)
 }
@@ -754,7 +384,6 @@ interface NotificationSender {
     suspend fun sendEmail(message: String, email: String)
 }
 
-// 2. Refactored class using Constructor Injection (Single Responsibility & Open-Closed)
 class CleanBookingService(
     private val repository: BookingRepository,
     private val notifier: NotificationSender
@@ -770,49 +399,15 @@ class CleanBookingService(
         }
     }
 }</code></pre>
-            </div>
-
-            <div class="lc-section tests">
-                <div class="lc-title tests">Unit Tests</div>
-                <pre><code class="language-kotlin">import io.mockk.*
-import kotlinx.coroutines.test.runTest
-import org.junit.Assert
-import org.junit.Test
-
-class CleanBookingServiceTest {
-    private val repository = mockk<BookingRepository>()
-    private val notifier = mockk<NotificationSender>()
-    private val service = CleanBookingService(repository, notifier)
-
-    @Test
-    fun `test successful booking saves data and triggers email`() = runTest {
-        // Setup mocks
-        coEvery { repository.confirmBookingRemote("1", "U") } just Runs
-        coEvery { repository.saveBookingLocal("1", "U") } just Runs
-        coEvery { notifier.sendEmail(any(), "test@expedia.com") } just Runs
-
-        val result = service.executeBooking("1", "U", "test@expedia.com")
-
-        Assert.assertTrue(result)
-        coVerifySequence {
-            repository.confirmBookingRemote("1", "U")
-            repository.saveBookingLocal("1", "U")
-            notifier.sendEmail("Booking confirmed for 1", "test@expedia.com")
-        }
-    }
-}</code></pre>
-            </div>
-
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label followup">Follow-Up Questions</div>
-                    <div class="qa-text">
-                        <ol>
-                            <li>How does this refactoring satisfy the Dependency Inversion Principle (DIP)?</li>
-                            <li>How does separating the notification channel into an interface support Open-Closed Principle (OCP)? (We can add SMS or push alerts without modifying the booking engine).</li>
-                            <li>How do you mock or fake specific failure cases in the repository?</li>
-                        </ol>
-                    </div>
+                    <div class="qa-label question">Which SOLID principles are satisfied by this refactoring?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">1. **Single Responsibility (SRP)**: The booking service coordinates execution flows; data persistence and notification actions are delegated to dedicated interfaces.
+                    2. **Dependency Inversion (DIP)**: The service depends on interfaces (abstractions) instead of concrete database and API clients.
+                    3. **Interface Segregation (ISP)**: Dependencies are split into small, focused interfaces.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Hardcoding concrete implementations (like API clients) inside constructors, which prevents mocking.</div>
                 </div>
             </div>
         </div>
@@ -820,36 +415,20 @@ class CleanBookingServiceTest {
 
     <!-- PROBLEM 8 -->
     <article class="topic-card">
-        <h2 id="live-fake-repository">
+        <h2 id="live-testing">
             <input type="checkbox" class="topic-chk" data-topic="8">
             <span>Problem 8: Unit Testing with Fake Repository</span>
             <span class="topic-tag">Testing</span>
         </h2>
         <div class="topic-body">
-            <p><strong>Interviewer Prompt:</strong></p>
-            <p class="alert-note">
-                "Write a unit test suite for a ViewModel that fetches travel deals. Instead of using MockK, implement a Fake Repository to simulate network latency, successes, and resource errors, ensuring your test suite is reliable."
-            </p>
-
-            <div class="lc-section naive">
-                <div class="lc-title naive">Naive Solution & Drawbacks</div>
-                <p>
-                    A naive solution relies on complex MockK stubbing for every scenario, which makes tests rigid and difficult to refactor when implementation details change.
-                </p>
-                <pre><code class="language-kotlin">// NAIVE: Complex MockK setups
-val mockRepo = mockk<DealsRepository>()
-coEvery { mockRepo.getDeals() } throws IOException()
-// Hard to simulate state mutations or dynamic in-memory caches</code></pre>
-            </div>
-
-            <div class="lc-section solution">
-                <div class="lc-title solution">Clean Kotlin Solution</div>
-                <pre><code class="language-kotlin">// 1. Repository Interface
-interface DealsRepository {
+            <h3>Prompt</h3>
+            <p>Write a unit test suite for a ViewModel that fetches travel deals. Instead of using MockK, implement a Fake Repository to simulate network latency, successes, and resource errors.</p>
+            <h3>Clean Kotlin Solution</h3>
+            <pre><code class="language-kotlin">interface DealsRepository {
     suspend fun getDeals(): List<String>
 }
 
-// 2. Fake Repository Implementation (Stateful Fake)
+// Stateful Fake Repository for testing
 class FakeDealsRepository : DealsRepository {
     private val deals = mutableListOf<String>()
     var shouldThrowError = false
@@ -865,9 +444,8 @@ class FakeDealsRepository : DealsRepository {
     }
 }
 
-// 3. ViewModel using constructor injection
 class DealsViewModel(private val repository: DealsRepository) : ViewModel() {
-    private val _uiState = MutableStateFlow<DealsUiState>(DealsUiState.Loading)
+    private val _uiState = MutableStateFlow&lt;DealsUiState&gt;(DealsUiState.Loading)
     val uiState = _uiState.asStateFlow()
 
     fun fetchDeals() {
@@ -881,67 +459,14 @@ class DealsViewModel(private val repository: DealsRepository) : ViewModel() {
             }
         }
     }
-}
-
-sealed interface DealsUiState {
-    object Loading : DealsUiState
-    data class Success(val list: List<String>) : DealsUiState
-    data class Error(val message: String) : DealsUiState
 }</code></pre>
-            </div>
-
-            <div class="lc-section tests">
-                <div class="lc-title tests">Unit Tests</div>
-                <pre><code class="language-kotlin">import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.test.runTest
-import org.junit.Assert
-import org.junit.Test
-import app.cash.turbine.test
-
-class DealsViewModelTest {
-    private val fakeRepository = FakeDealsRepository()
-    private val viewModel = DealsViewModel(fakeRepository)
-
-    @Test
-    fun `test loading fetches deals successfully`() = runTest {
-        fakeRepository.addDeals(listOf("Deal 1", "Deal 2"))
-        
-        viewModel.uiState.test {
-            // Initial state check
-            Assert.assertEquals(DealsUiState.Loading, awaitItem())
-            
-            viewModel.fetchDeals()
-            
-            // Success mapping check
-            Assert.assertEquals(DealsUiState.Success(listOf("Deal 1", "Deal 2")), awaitItem())
-        }
-    }
-
-    @Test
-    fun `test loading emits error when repository throws exception`() = runTest {
-        fakeRepository.shouldThrowError = true
-        
-        viewModel.uiState.test {
-            Assert.assertEquals(DealsUiState.Loading, awaitItem())
-            
-            viewModel.fetchDeals()
-            
-            Assert.assertEquals(DealsUiState.Error("Network failed"), awaitItem())
-        }
-    }
-}</code></pre>
-            </div>
-
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label followup">Follow-Up Questions</div>
-                    <div class="qa-text">
-                        <ol>
-                            <li>Why are fakes preferred over mocks in large-scale domain logic testing?</li>
-                            <li>How do you simulate slow network responses (latency) using this Fake Repository? (Add a configurable delay inside the fake's method).</li>
-                            <li>What is the difference between Fakes, Mocks, and Stubs in software testing?</li>
-                        </ol>
-                    </div>
+                    <div class="qa-label question">Why are Fakes preferred over Mocks in large-scale testing?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Fakes provide a lightweight, consistent, stateful implementation (like an in-memory database). They run faster, make tests easier to read by avoiding verbose stubbing configuration, and prevent tests from breaking when internal method invocation orders change.</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Over-mocking simple entities (like data models), which increases configuration boilerplate.</div>
                 </div>
             </div>
         </div>

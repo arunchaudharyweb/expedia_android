@@ -1,12 +1,12 @@
 <div class="section-content">
     <h1>Section 7: SDE-2 Solution Design</h1>
     <div class="section-meta">
-        <span>⏱ 30 min read</span>
+        <span>⏱ 15 min read</span>
         <span>✓ Part 2 Design</span>
     </div>
     
     <p class="section-intro">
-        Senior SDE-2 system design scenarios for mobile clients. Each architecture details structural component flows, asynchronous boundaries, memory and cache structures, and synchronization protocols.
+        Streamlined senior SDE-2 mobile system design scenarios. Focusing on architecture diagrams, caching strategies, and trade-offs.
     </p>
 
     <!-- PROBLEM 1 -->
@@ -18,37 +18,25 @@
         </h2>
         <div class="topic-body">
             <h3>Requirements</h3>
-            <p><strong>Functional:</strong> Render cached hotel search results instantly. Fetch background network updates. Cache specific booking pages for offline view.
-            <br><strong>Non-Functional:</strong> Seamless UI updates during background sync. Low battery impact. Cache expiration threshold at 30 minutes.</p>
+            <ul>
+                <li>Functional: Render cached results instantly. Fetch background updates. Invalidate cache after 30 minutes.</li>
+                <li>Non-Functional: Seamless UI updates without screen flickers. Low battery overhead.</li>
+            </ul>
             <h3>Architecture Diagram</h3>
             <pre class="component-diagram">
-+-------------+      Collects       +--------------------+
-|  Search UI  | &lt;------------------ |  HotelRepository   |
-+-------------+                     +--------------------+
-                                               |
-                     +-------------------------+-------------------------+
-                     | (Emit cached db first)                            | (Fetch network update)
-                     v                                                   v
-          +--------------------+                               +--------------------+
-          | Room Database (DB) | &lt;------- Writes Success ----- | Retrofit API Client|
-          +--------------------+                               +--------------------+
+[Search UI] &lt;-- (Collect Flow) -- [Repository] --&gt; [Local Cache (Room DB)]
+                                       |
+                                       +-- (Fetch API) --&gt; [Retrofit Network Client]
             </pre>
-            <h3>Trade-offs</h3>
-            <p>Writing network updates to the database before displaying them in the UI introduces minor write-latency. However, this enforces a single source of truth and prevents UI inconsistency.</p>
-            <h3>Scalability Considerations</h3>
-            <p>Query indexes must be placed on frequently filtered database fields (like price and rating) to keep search queries fast as the cached dataset grows.</p>
-            <h3>Testing Strategy</h3>
-            <p>Write integration tests using in-memory Room database instances to verify that calling the repository triggers both cache emission and network refresh.</p>
+            <h3>Trade-offs & Scalability</h3>
+            <p><strong>DB-as-SSOT</strong>: Writing network updates to the local database before emitting to the UI ensures data consistency across sessions, at the cost of slight disk write latency. Index queries on fields like price and ratings to optimize database scans as data scales.</p>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Interview Question</div>
-                    <div class="qa-text">How do you implement an offline-first cache invalidation policy?</div>
+                    <div class="qa-label question">How do you structure the repository to support offline-first updates?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Store a timestamp metadata field along with the cached data. When querying, check if the current system time exceeds the cached timestamp by the expiration threshold. If expired, emit the cached data with a "stale" flag while launching an immediate background network fetch to refresh the data.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How do you handle schema migrations for local offline databases without clearing user data?</div>
+                    <div class="qa-text">Return a <code>Flow</code> that emits cached values from the local database immediately. Launch a background task to fetch fresh data via the API, write it to the database on success, and handle network errors gracefully by emitting an error state or showing a warning indicator in the UI.</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Directly updating UI state from network results without persisting them to the database, breaking offline support for subsequent sessions.</div>
+                    <div class="qa-text">Emitting network results directly to the UI without writing them to the database first, violating the single source of truth principle.</div>
                 </div>
             </div>
         </div>
@@ -56,42 +44,30 @@
 
     <!-- PROBLEM 2 -->
     <article class="topic-card">
-        <h2 id="pagination">
+        <h2 id="realtime-updates">
             <input type="checkbox" class="topic-chk" data-topic="2">
-            <span>Problem 2: Pagination & List Caching</span>
-            <span class="topic-tag">Pagination</span>
+            <span>Problem 2: Real-Time Price Updates</span>
+            <span class="topic-tag">Real-Time</span>
         </h2>
         <div class="topic-body">
             <h3>Requirements</h3>
-            <p><strong>Functional:</strong> Support incremental scrolling for search results. Cache pages locally in order. Reset pagination state on search query change.
-            <br><strong>Non-Functional:</strong> Maintain a 60fps/120fps scroll rate. Prevent duplicate network page requests under rapid scrolls.</p>
+            <ul>
+                <li>Functional: Update hotel prices in real-time. Disconnect connection when in background.</li>
+                <li>Non-Functional: Reconnect within 1 second of returning to screen. Exponential backoff retry.</li>
+            </ul>
             <h3>Architecture Diagram</h3>
             <pre class="component-diagram">
-+------------------+     collect()      +--------------------+
-|  RecyclerView UI | &lt;----------------- |  Pager (Paging 3)  |
-+------------------+                    +--------------------+
-                                                  |
-                         +------------------------+------------------------+
-                         v RemoteMediator                                  v PagingSource
-              +--------------------+                             +--------------------+
-              | Room Database cache| &lt;----- Network Fetch ------ | Retrofit API Client|
-              +--------------------+                             +--------------------+
+[UI View] &lt;-- (State Flow) -- [ViewModel] &lt;-- (WebSocket) -- [WebSocket Manager (OkHttp)]
             </pre>
-            <h3>Trade-offs</h3>
-            <p>Using Jetpack Paging 3 simplifies scroll state management but introduces architecture complexity (requires RemoteMediator). The alternative (manual scroll listeners) is simpler but prone to duplicate page load triggers.</p>
-            <h3>Scalability Considerations</h3>
-            <p>Store page indices and item ordering keys explicitly in a mapping table in Room. This avoids duplicate list items when items are updated or reordered on the server.</p>
-            <h3>Testing Strategy</h3>
-            <p>Test the <code>RemoteMediator</code> boundary class using mock API responses to verify that database insert actions are executed sequentially.</p>
+            <h3>Trade-offs & Scalability</h3>
+            <p><strong>WebSockets vs SSE</strong>: WebSockets enable bi-directional communication, ideal for client heartbeats. Server-Sent Events (SSE) are unidirectional and consume fewer resources, but do not support client-to-server pings. Exponential backoff prevents overloading the server during reconnection storms.</p>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Explain the RemoteMediator interface in Jetpack Paging 3.</div>
+                    <div class="qa-label question">Design a reconnection strategy for real-time WebSockets.</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text"><code>RemoteMediator</code> handles loading data from the network when the database runs out of cached items. It receives pagination keys, requests the next page from the network, and writes it directly to the database. The database then updates the UI paging stream.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How do you implement jump-to-position mechanics in database-backed paging lists?</div>
+                    <div class="qa-text">Use an exponential backoff strategy (e.g. retry after 1s, 2s, 4s, up to 32s). Monitor network connectivity changes using <code>ConnectivityManager</code> to trigger an immediate reconnection attempt when the device goes back online. Disconnect the socket when the app enters the background to save battery.</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Using raw database offsets for paging, which causes duplicate items if items are deleted or added during pagination.</div>
+                    <div class="qa-text">Keeping the WebSocket connection active when the app is in the background, violating battery optimization guidelines.</div>
                 </div>
             </div>
         </div>
@@ -99,43 +75,32 @@
 
     <!-- PROBLEM 3 -->
     <article class="topic-card">
-        <h2 id="caching-engine">
+        <h2 id="pagination">
             <input type="checkbox" class="topic-chk" data-topic="3">
-            <span>Problem 3: Memory & Disk Caching Engine</span>
-            <span class="topic-tag">Caching</span>
+            <span>Problem 3: Pagination & List Caching</span>
+            <span class="topic-tag">Pagination</span>
         </h2>
         <div class="topic-body">
             <h3>Requirements</h3>
-            <p><strong>Functional:</strong> Cache serialized HTTP responses and domain models. Implement a Least Recently Used (LRU) eviction strategy.
-            <br><strong>Non-Functional:</strong> Read latency below 5ms. Disk size limits must be respected to prevent app bloat.</p>
+            <ul>
+                <li>Functional: Scroll through large lists smoothly. Cache loaded pages in SQLite.</li>
+                <li>Non-Functional: Prevent duplicate network requests. Smooth scroll at 60fps.</li>
+            </ul>
             <h3>Architecture Diagram</h3>
             <pre class="component-diagram">
-+------------------+                   +--------------------+
-|  Repository Call | ----------------&gt; |  CacheController   |
-+------------------+                   +--------------------+
-                                                 |
-                       +-------------------------+-------------------------+
-                       | (Fast path)                                       | (Slow path)
-                       v                                                   v
-            +--------------------+                               +--------------------+
-            |  LruCache (RAM)    |                               |  DiskLruCache      |
-            +--------------------+                               +--------------------+
+[RecyclerView UI] &lt;-- [Pager (Paging 3)] -- [RemoteMediator] --&gt; [Room Database cache]
+                                                    |
+                                                    +-- (Fetch API) --&gt; [Retrofit]
             </pre>
-            <h3>Trade-offs</h3>
-            <p>Memory-only caches are extremely fast but cleared when the process is killed. Adding a disk cache provides persistence across app launches at the cost of slight disk I/O overhead.</p>
-            <h3>Scalability Considerations</h3>
-            <p>Use a multi-level cache model: check RAM first, then Disk. Encrypt sensitive cached items (using EncryptedSharedPreferences or encrypted SQLite) to protect user credentials.</p>
-            <h3>Testing Strategy</h3>
-            <p>Write unit tests that verify eviction policies by adding items that exceed the cache size threshold and asserting that the oldest items are removed.</p>
+            <h3>Trade-offs & Scalability</h3>
+            <p>Using Jetpack Paging 3 with <code>RemoteMediator</code> simplifies caching and loading states but introduces architecture complexity. Store pagination keys explicitly in a mapping table to avoid duplicate items when items are updated on the server.</p>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">What is the difference between LruCache and DiskLruCache?</div>
+                    <div class="qa-label question">Explain the role of RemoteMediator in Paging 3.</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text"><code>LruCache</code> resides entirely in the application process heap memory, providing nanosecond-level access. <code>DiskLruCache</code> writes files to the device's internal storage, which is persistent but requires disk I/O, resulting in millisecond-level access times.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How do you configure cache-control headers in OkHttpClient to automate response caching?</div>
+                    <div class="qa-text"><code>RemoteMediator</code> acts as a boundary callback. When the database runs out of cached items, it fetches the next page from the network and saves it to the database, which then updates the UI.</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Reading from the disk cache on the main thread, causing frame drops and potential ANRs.</div>
+                    <div class="qa-text">Using raw database offsets for paging, which causes duplicate items if items are deleted or added during pagination.</div>
                 </div>
             </div>
         </div>
@@ -143,43 +108,30 @@
 
     <!-- PROBLEM 4 -->
     <article class="topic-card">
-        <h2 id="notification-system">
+        <h2 id="analytics-pipeline">
             <input type="checkbox" class="topic-chk" data-topic="4">
-            <span>Problem 4: Push Notification Delivery System</span>
-            <span class="topic-tag">Notifications</span>
+            <span>Problem 4: Analytics Event Pipeline</span>
+            <span class="topic-tag">Pipeline</span>
         </h2>
         <div class="topic-body">
             <h3>Requirements</h3>
-            <p><strong>Functional:</strong> Receive Firebase Cloud Messages (FCM). Route notifications to target screens. Handle custom payloads.
-            <br><strong>Non-Functional:</strong> Decouple notification parsing from the UI. Support notification channels post Android 8.</p>
+            <ul>
+                <li>Functional: Queue events locally. Upload in batches (10 events or 30 seconds).</li>
+                <li>Non-Functional: Guaranteed delivery for high-priority events. Limit database size to 50MB.</li>
+            </ul>
             <h3>Architecture Diagram</h3>
             <pre class="component-diagram">
-+------------------+                   +--------------------+
-|  FCM Service     | ----------------&gt; | NotificationRouter |
-+------------------+                   +--------------------+
-                                                 |
-                       +-------------------------+-------------------------+
-                       | (Silent / Data sync)                              | (Visual Alert)
-                       v                                                   v
-            +--------------------+                               +--------------------+
-            | WorkManager task   |                               | NotificationManager|
-            +--------------------+                               +--------------------+
+[UI click] --&gt; [AnalyticsManager] --&gt; [Room Database Queue] --&gt; [WorkManager Upload]
             </pre>
-            <h3>Trade-offs</h3>
-            <p>Processing payloads immediately inside <code>FirebaseMessagingService</code> is fast, but complex actions must be offloaded to <code>WorkManager</code> to comply with the OS's 10-second service execution limit.</p>
-            <h3>Scalability Considerations</h3>
-            <p>Use a centralized routing registry to resolve deep links dynamically, decoupling notification handlers from hardcoded activity destinations.</p>
-            <h3>Testing Strategy</h3>
-            <p>Mock the <code>RemoteMessage</code> class to verify that the router correctly parses payloads and creates the expected notification channels.</p>
+            <h3>Trade-offs & Scalability</h3>
+            <p>Writing events to a database avoids data loss if the app crashes but adds minor disk write overhead. Batching saves battery by reducing cellular radio activation cycles. Prune the database by deleting the oldest low-priority events if it exceeds size limits.</p>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">What are silent push notifications, and what are their execution limits?</div>
+                    <div class="qa-label question">Why is a local database queue preferred over in-memory buffers?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Silent notifications contain only data payloads without displaying a user alert. They are designed to trigger background data sync. Under Android guidelines, they should not execute heavy tasks directly inside FCM services. Instead, enqueue a background task via <code>WorkManager</code> to perform the synchronization safely.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How do you build a secure PendingIntent for a notification action button post Android 12?</div>
+                    <div class="qa-text">In-memory queues lose all logged events if the application crashes, runs out of memory, or is killed by the OS. Writing events to a local Room database queue ensures data persistence across sessions, allowing the data to be uploaded once the app is restarted and connection is restored.</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Attempting to launch activities directly from background notification services on newer Android versions, which is blocked by the OS.</div>
+                    <div class="qa-text">Uploading events individually as they occur, which drains the device's battery by keeping the network radio active continuously.</div>
                 </div>
             </div>
         </div>
@@ -187,43 +139,32 @@
 
     <!-- PROBLEM 5 -->
     <article class="topic-card">
-        <h2 id="chat-app">
+        <h2 id="push-routing">
             <input type="checkbox" class="topic-chk" data-topic="5">
-            <span>Problem 5: Chat & Messaging Application</span>
-            <span class="topic-tag">Chat</span>
+            <span>Problem 5: Push Notification Routing</span>
+            <span class="topic-tag">System</span>
         </h2>
         <div class="topic-body">
             <h3>Requirements</h3>
-            <p><strong>Functional:</strong> Maintain a bi-directional messaging connection. Display message delivery states. Synchronize chat history offline.
-            <br><strong>Non-Functional:</strong> Reconnection latency below 2 seconds. Low battery overhead. Messages must be delivered in order.</p>
+            <ul>
+                <li>Functional: Receive FCM messages. Route to target screen. Handle silent payload updates.</li>
+                <li>Non-Functional: Comply with Android notification channel requirements. Low latency.</li>
+            </ul>
             <h3>Architecture Diagram</h3>
             <pre class="component-diagram">
-+------------------+                   +--------------------+
-|     Chat UI      | &lt;---------------- |  MessageRepository |
-+------------------+   Flow State      +--------------------+
-                                                 |
-                       +-------------------------+-------------------------+
-                       | (Persistent Cache)                                | (Bi-directional)
-                       v                                                   v
-            +--------------------+                               +--------------------+
-            | Room Chat Database | &lt;----- Sync writes ---------- |  WebSocket Manager |
-            +--------------------+                               +--------------------+
+[FCM Service] --&gt; [NotificationRouter] --&gt; [DeepLinkRegistry] --&gt; [Target Activity]
+                         | (Silent data sync)
+                         +--&gt; [WorkManager SyncTask]
             </pre>
-            <h3>Trade-offs</h3>
-            <p>Using WebSockets enables real-time messaging but uses more battery. The alternative (long polling) is slow and increases server connection overhead.</p>
-            <h3>Scalability Considerations</h3>
-            <p>Encrypt messages in the local Room database using SQLCipher to prevent unauthorized access to personal chat logs.</p>
-            <h3>Testing Strategy</h3>
-            <p>Use a mock WebSocket server to verify reconnection logic, error handling, and message order synchronization during network drops.</p>
+            <h3>Trade-offs & Scalability</h3>
+            <p>Decouple notification handling from specific activities by routing deep link URIs dynamically. Use <code>WorkManager</code> to process data updates in background sync notifications to respect the OS service execution limits.</p>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">How do you implement an exponential backoff reconnection strategy for chat WebSockets?</div>
+                    <div class="qa-label question">How do you handle background data sync notifications?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">When the connection drops, schedule a retry starting with a 1-second delay. Double the delay on every subsequent failure (2s, 4s, 8s, up to a maximum of 32s). Listen to network connectivity changes to trigger an immediate retry when the device goes back online.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">Explain how message deduplication is managed on the client when receiving duplicate socket payloads.</div>
+                    <div class="qa-text">Do not perform heavy synchronization tasks directly inside the Firebase service, as this can trigger service timeouts. Instead, parse the payload, extract synchronization tags, and schedule a background task via <code>WorkManager</code> to run the sync task safely.</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Updating the chat UI directly from network events without persisting messages to the local database first.</div>
+                    <div class="qa-text">Attempting to launch activities directly from background notification services on newer Android versions, which is blocked by the OS.</div>
                 </div>
             </div>
         </div>
@@ -231,44 +172,32 @@
 
     <!-- PROBLEM 6 -->
     <article class="topic-card">
-        <h2 id="ble-sync">
+        <h2 id="chat-sync">
             <input type="checkbox" class="topic-chk" data-topic="6">
-            <span>Problem 6: BLE Device Synchronization</span>
-            <span class="topic-tag">System</span>
+            <span>Problem 6: Real-Time Chat System</span>
+            <span class="topic-tag">Chat</span>
         </h2>
         <div class="topic-body">
             <h3>Requirements</h3>
-            <p><strong>Functional:</strong> Scan for adjacent BLE devices. Establish connection and read characteristics. Persist sensor packets.
-            <br><strong>Non-Functional:</strong> Handle connection drops gracefully. Keep scanning overhead low to prevent battery drain.</p>
+            <ul>
+                <li>Functional: Bi-directional messaging. Message delivery states (sent, delivered, read). Offline history synchronization.</li>
+                <li>Non-Functional: Connection latency below 2 seconds. Messages must be delivered in order.</li>
+            </ul>
             <h3>Architecture Diagram</h3>
             <pre class="component-diagram">
-+------------------+                   +--------------------+
-|  DeviceSync UI   | &lt;---------------- |  BleDeviceManager  |
-+------------------+   Status Flow     +--------------------+
-                                                 |
-                       +-------------------------+-------------------------+
-                       | (Scan registry)                                   | (Hardware)
-                       v                                                   v
-            +--------------------+                               +--------------------+
-            | Room Device DB     | &lt;----- Write metrics -------- | Android Bluetooth   |
-            +--------------------+                               | Adapter / GATT      |
-                                                                 +--------------------+
+[Chat UI] &lt;-- (Collect) -- [MessageRepository] --&gt; [Local Cache (Room DB)]
+                                   |
+                                   +-- (WebSocket) --&gt; [OkHttp WebSocket Manager]
             </pre>
-            <h3>Trade-offs</h3>
-            <p>Scanning continuously returns immediate device updates but drains battery. The alternative (periodic duty-cycle scanning) saves battery but delays device detection.</p>
-            <h3>Scalability Considerations</h3>
-            <p>Wrap the BLE scanning and GATT connection inside a Foreground Service to prevent the OS from terminating the synchronization task when the app is in the background.</p>
-            <h3>Testing Strategy</h3>
-            <p>Decouple GATT interactions behind an interface. Inject fake GATT objects in unit tests to verify state transitions and packet parsing logic.</p>
+            <h3>Trade-offs & Scalability</h3>
+            <p>Using WebSockets enables real-time messaging but consumes more battery than HTTP polling. Encrypt messages in the local Room database using SQLCipher to secure personal chat logs.</p>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Why are BLE operations notoriously difficult to manage on Android, and how do you handle threading?</div>
+                    <div class="qa-label question">How do you handle chat message synchronization after offline periods?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">BLE GATT operations are asynchronous and thread-hostile. Initiating overlapping reads or writes triggers state errors. To handle this, serialize all GATT commands (discover services, read, write) in a sequential queue, executing them one at a time on a dedicated background <code>HandlerThread</code> or using Coroutine Mutex locks.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does Android's BLE MTU size negotiation affect data transmission speed?</div>
+                    <div class="qa-text">When connection is re-established, request delta synchronization from the server, passing the last synchronized message ID. Store incoming messages in the Room database, resolving duplicate payloads by deduplicating against the unique message ID.</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Executing GATT callbacks directly on the Main Thread, leading to frame drops during heavy data transfers.</div>
+                    <div class="qa-text">Displaying incoming messages in the UI without persisting them to the database first, leading to lost history if the app is closed.</div>
                 </div>
             </div>
         </div>
@@ -276,43 +205,30 @@
 
     <!-- PROBLEM 7 -->
     <article class="topic-card">
-        <h2 id="image-loading">
+        <h2 id="ble-sync">
             <input type="checkbox" class="topic-chk" data-topic="7">
-            <span>Problem 7: Image Loading & Caching Engine</span>
-            <span class="topic-tag">Image Loading</span>
+            <span>Problem 7: BLE Device Synchronization</span>
+            <span class="topic-tag">System</span>
         </h2>
         <div class="topic-body">
             <h3>Requirements</h3>
-            <p><strong>Functional:</strong> Fetch and decode remote images. Display placeholders and error assets. Support image downsampling.
-            <br><strong>Non-Functional:</strong> Scroll smoothly at 60fps/120fps. Prevent memory leaks from view reference recycling.</p>
+            <ul>
+                <li>Functional: Scan for adjacent BLE devices. Read and write GATT characteristics.</li>
+                <li>Non-Functional: Handle connection drops. Duty-cycle scan execution to save battery.</li>
+            </ul>
             <h3>Architecture Diagram</h3>
             <pre class="component-diagram">
-+------------------+                   +--------------------+
-|  ImageView / UI  | ----------------&gt; | ImageLoaderEngine  |
-+------------------+                   +--------------------+
-                                                 |
-                       +-------------------------+-------------------------+
-                       | (Fast Cache)                                      | (Slow Cache / Network)
-                       v                                                   v
-            +--------------------+                               +--------------------+
-            | LruCache (Bitmaps) | &lt;----- Fetch network -------- | DiskCache / OkHttp |
-            +--------------------+                               +--------------------+
+[BleDeviceManager] --&gt; [GATT Queue handler] --&gt; [BluetoothAdapter GATT Thread]
             </pre>
-            <h3>Trade-offs</h3>
-            <p>Caching full-resolution bitmaps avoids decoding overhead but consumes significant memory. Caching compressed image bytes saves memory but requires on-the-fly decoding, increasing CPU utilization.</p>
-            <h3>Scalability Considerations</h3>
-            <p>Use Bitmap pooling (reusing Bitmap memory via <code>inBitmap</code>) to reduce garbage collector overhead and prevent GC-induced frame drops during fast scrolls.</p>
-            <h3>Testing Strategy</h3>
-            <p>Test the cache resolution logic using mock web responses, verifying that requests for cached images bypass network calls.</p>
+            <h3>Trade-offs & Scalability</h3>
+            <p>Scanning continuously returns immediate device updates but drains battery. Wrap the BLE scanning and GATT connection inside a Foreground Service to prevent the OS from terminating the synchronization task when the app is in the background.</p>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Explain how bitmap downsampling prevents OutOfMemory errors.</div>
+                    <div class="qa-label question">Why are BLE operations thread-hostile, and how do you resolve it?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Loading a high-resolution image into memory consumes RAM based on dimensions (Width * Height * 4 bytes for ARGB_8888), not file size. Downsampling reads the image dimensions first using <code>inJustDecodeBounds = true</code>, calculates the ratio (sample size) matching the target view dimensions, and loads the resized image into memory, reducing RAM footprint by up to 90%.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">Explain how modern libraries (like Coil or Glide) track view recycling to cancel active image requests.</div>
+                    <div class="qa-text">Android's BLE GATT operations are asynchronous and thread-hostile. Initiating overlapping reads or writes triggers state errors. To handle this, serialize all GATT commands in a sequential queue, executing them one at a time on a dedicated background <code>HandlerThread</code> or using Coroutine Mutex locks.</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Loading full-resolution images into small thumbnail views, causing rapid memory growth and OOM crashes.</div>
+                    <div class="qa-text">Executing GATT callbacks directly on the Main Thread, leading to frame drops during heavy data transfers.</div>
                 </div>
             </div>
         </div>
@@ -320,43 +236,32 @@
 
     <!-- PROBLEM 8 -->
     <article class="topic-card">
-        <h2 id="background-sync">
+        <h2 id="image-loader">
             <input type="checkbox" class="topic-chk" data-topic="8">
-            <span>Problem 8: Background Data Sync Engine</span>
-            <span class="topic-tag">Sync</span>
+            <span>Problem 8: Image Loading & Memory Caching Engine</span>
+            <span class="topic-tag">Caching</span>
         </h2>
         <div class="topic-body">
             <h3>Requirements</h3>
-            <p><strong>Functional:</strong> Sync local database with the server in the background. Respect charging and network constraints.
-            <br><strong>Non-Functional:</strong> Support retry backoff. Run task even if the app or device restarts.</p>
+            <ul>
+                <li>Functional: Fetch and decode images. Support placeholders and error assets.</li>
+                <li>Non-Functional: Scroll smoothly at 60fps/120fps. Prevent OOM errors.</li>
+            </ul>
             <h3>Architecture Diagram</h3>
             <pre class="component-diagram">
-+------------------+                   +--------------------+
-|  SyncTrigger     | ----------------&gt; |    WorkManager     |
-+------------------+                   +--------------------+
-                                                 |
-                       +-------------------------+-------------------------+
-                       | (Check Constraints)                               | (Job Execution)
-                       v                                                   v
-            +--------------------+                               +--------------------+
-            | SQLite DB state    | &lt;----- Read offline state --- |    SyncWorker      |
-            +--------------------+                               +--------------------+
+[UI ImageView] --&gt; [ImageLoader] --&gt; [Memory LruCache (Bitmaps)] --&gt; [DiskLruCache]
+                                                                        |
+                                                                        +--&gt; [Network]
             </pre>
-            <h3>Trade-offs</h3>
-            <p>Running sync tasks inside a Foreground Service ensures immediate execution but is resource-intensive and restricted by the OS. <code>WorkManager</code> is deferrable but guarantees execution under device constraints, saving battery.</p>
-            <h3>Scalability Considerations</h3>
-            <p>Implement incremental synchronization (delta sync) using change tracking tokens to upload only modified data instead of the entire database.</p>
-            <h3>Testing Strategy</h3>
-            <p>Use WorkManager's <code>WorkManagerTestInitHelper</code> to simulate constraint changes (such as losing connection) and verify task rescheduling behavior.</p>
+            <h3>Trade-offs & Scalability</h3>
+            <p>Caching full-resolution bitmaps in memory avoids decoding overhead but consumes significant RAM. Downsample bitmaps using <code>inSampleSize</code> based on target view dimensions before loading them into memory. Use Bitmap pooling to reuse memory, reducing GC churn.</p>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">How does WorkManager handle task cancellation when constraints are lost during execution?</div>
+                    <div class="qa-label question">How does bitmap downsampling prevent OutOfMemory errors?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">When constraints are lost, WorkManager triggers cooperative cancellation. The worker's coroutine scope is cancelled, throwing a <code>CancellationException</code>. The task is then stopped and rescheduled to run again once constraints are met.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How do you implement transaction integrity when writing synced data to the Room database?</div>
+                    <div class="qa-text">Loading a high-resolution image into memory consumes RAM based on dimensions (Width * Height * 4 bytes for ARGB_8888), not file size. Downsampling reads the image dimensions first using <code>inJustDecodeBounds = true</code>, calculates the ratio (sample size) matching the target view dimensions, and loads the resized image into memory, reducing RAM footprint by up to 90%.</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Failing to handle task cancellation inside the worker's execution block, which keeps the background task running even after constraints are lost.</div>
+                    <div class="qa-text">Loading full-resolution images into small thumbnail views, causing rapid memory growth and OOM crashes.</div>
                 </div>
             </div>
         </div>
@@ -364,44 +269,30 @@
 
     <!-- PROBLEM 9 -->
     <article class="topic-card">
-        <h2 id="analytics-pipeline">
+        <h2 id="background-sync">
             <input type="checkbox" class="topic-chk" data-topic="9">
-            <span>Problem 9: Analytics Event Pipeline</span>
-            <span class="topic-tag">Pipeline</span>
+            <span>Problem 9: Background Data Synchronization Engine</span>
+            <span class="topic-tag">Sync</span>
         </h2>
         <div class="topic-body">
             <h3>Requirements</h3>
-            <p><strong>Functional:</strong> Queue UI interaction events (clicks, impressions) locally. Upload events in batches. Respect priority levels.
-            <br><strong>Non-Functional:</strong> Limit local database size. Exponential backoff retry policy.</p>
+            <ul>
+                <li>Functional: Sync local database with server changes. Retry on connection failure.</li>
+                <li>Non-Functional: Respect device constraints (Wi-Fi, charging). Backoff retry policy.</li>
+            </ul>
             <h3>Architecture Diagram</h3>
             <pre class="component-diagram">
-+------------------+                   +--------------------+
-|    Tracker UI    | ----------------&gt; |  AnalyticsManager  |
-+------------------+                   +--------------------+
-                                                 |
-                                       +--------------------+
-                                       | Room Event Queue   |
-                                       +--------------------+
-                                                 |
-                                       +--------------------+
-                                       | WorkManager Upload |
-                                       +--------------------+
+[WorkManager] -- (Check constraints) --&gt; [SyncWorker] --&gt; [SyncRepository] --&gt; [Server API]
             </pre>
-            <h3>Trade-offs</h3>
-            <p>Queueing events in a database prevents data loss but adds disk write latency. An in-memory queue is faster but loses events if the app crashes before upload.</p>
-            <h3>Scalability Considerations</h3>
-            <p>Limit the maximum database size (e.g. 50MB). If exceeded, prune the database by deleting the oldest low-priority events to prevent storage bloat.</p>
-            <h3>Testing Strategy</h3>
-            <p>Write unit tests to verify batch compilation, priority-based sorting, and database pruning logic.</p>
+            <h3>Trade-offs & Scalability</h3>
+            <p>Running sync tasks inside a Foreground Service ensures immediate execution but is resource-intensive and restricted by the OS. <code>WorkManager</code> is deferrable but guarantees execution under device constraints, saving battery.</p>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Why is an offline database queue preferred over in-memory buffers for analytics events?</div>
+                    <div class="qa-label question">How do you implement transaction integrity during sync updates?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">In-memory queues lose all logged events if the application crashes, runs out of memory, or is killed by the OS. Writing events to a local Room database queue ensures data persistence across sessions, allowing the data to be uploaded once the app is restarted and connection is restored.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How do you implement batch compression to reduce network bandwidth during event uploads?</div>
+                    <div class="qa-text">Perform database writes inside a Room Transaction block. If the synchronization task is cancelled (e.g. constraints are lost), the database transaction is rolled back, preventing partial or corrupted local state updates.</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Uploading events individually as they occur, which drains the device's battery by keeping the network radio active continuously.</div>
+                    <div class="qa-text">Failing to handle task cancellation inside the worker's execution block, which keeps the background task running even after constraints are lost.</div>
                 </div>
             </div>
         </div>

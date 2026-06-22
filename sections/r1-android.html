@@ -1,12 +1,12 @@
 <div class="section-content">
     <h1>Section 5: Android Platform & Internals</h1>
     <div class="section-meta">
-        <span>⏱ 30 min read</span>
+        <span>⏱ 12 min read</span>
         <span>✓ Part 1 Core</span>
     </div>
     
     <p class="section-intro">
-        Low-level Android OS architectures, core framework lifecycle states, thread dispatch loop schedulers, Binder IPC mapping, garbage collection compaction pauses, and background task frameworks.
+        Consolidated, high-yield cheat sheet covering Android framework internals, lifecycles, IPC, ART compilers, background execution, and profiling tools.
     </p>
 
     <!-- TOPIC 1 -->
@@ -17,24 +17,20 @@
             <span class="topic-tag">Framework</span>
         </h2>
         <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>The OS manages activities using the <code>ActivityTaskManagerService</code> (ATMS) running in the system server process. State transitions are dispatched to the application process via binder IPC, where the <code>ActivityThread</code> schedules the callbacks. After API 28, <code>onSaveInstanceState()</code> is guaranteed to be called after <code>onStop()</code>, serializing critical state to be kept in ATMS memory.</p>
-            <h3>Threading Model</h3>
-            <p>All lifecycle callbacks run synchronously on the application's Main Thread. Blocking these callbacks delays the next transition and stalls UI frame rendering.</p>
-            <h3>Performance Impact</h3>
-            <p>Performing heavy operations (like DB access or serialization) during lifecycle hooks causes frame drops (jank) and can trigger ANRs if a transition takes longer than 5 seconds.</p>
-            <h3>Common Production Issues</h3>
-            <p>System-initiated process death (low memory) re-instantiates the activity using the saved bundle, but static variables are re-initialized to null, leading to <code>NullPointerException</code> if not restored properly.</p>
-            <h3>Interview Questions</h3>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Lifecycle ATMS</strong>: The OS coordinates lifecycle changes in the system server process via `ActivityTaskManagerService` (ATMS), communicating via Binder IPC with the app's `ActivityThread`.</li>
+                <li><strong>Process Death</strong>: Under low memory, the OS kills background processes without calling `onDestroy()`. It preserves the serialized state bundle returned by <code>onSaveInstanceState()</code> in system server memory to allow restoration when the user returns.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">What is the difference between onDestroy() called during finish() vs during process death?</div>
+                    <div class="qa-label question">Explain the lifecycle differences between finish() and system-initiated process death.</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">When <code>finish()</code> is invoked, the activity undergoes a complete teardown, calling <code>onDestroy()</code>, and its state is removed from memory. During low-memory process death, the process is killed directly in the background without calling <code>onDestroy()</code>, but its saved state is retained by the system server process. When the user returns, the activity is rebuilt, receiving the saved state bundle in <code>onCreate()</code>.</div>
+                    <div class="qa-text">When a user calls <code>finish()</code>, the activity transitions through <code>onPause</code>, <code>onStop</code>, and <code>onDestroy</code>, releasing all associated memory and state. During low-memory process death, the process is killed directly in the background without calling <code>onDestroy()</code>. The system preserves the state bundle returned by <code>onSaveInstanceState()</code> in system server memory. When the user returns, the activity is recreated, receiving the saved bundle in <code>onCreate()</code>.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">Where is the saved state bundle stored during process death, and what is its transaction size limit?</div>
+                    <div class="qa-text">Where is the saved state bundle stored during process death, and what is its transaction size limit? (Stored in system server process memory. The limit is 1MB shared across all active binder transactions).</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Saving heavy bitmaps or lists in the saved state, which triggers a `TransactionTooLargeException`.</div>
+                    <div class="qa-text">Saving heavy lists or bitmaps in the saved state, which triggers a `TransactionTooLargeException`.</div>
                 </div>
             </div>
         </div>
@@ -44,28 +40,24 @@
     <article class="topic-card">
         <h2 id="fragment-lifecycle">
             <input type="checkbox" class="topic-chk" data-topic="2">
-            <span>2. Fragment Lifecycle & View Lifecycle</span>
+            <span>2. Fragment Lifecycle & viewLifecycleOwner</span>
             <span class="topic-tag">Framework</span>
         </h2>
         <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>Fragments contain two distinct lifecycles: the fragment instance lifecycle and the fragment view lifecycle. When a fragment is replaced but placed on the backstack, its view is destroyed, but the fragment instance survives in memory.</p>
-            <h3>Threading Model</h3>
-            <p>All transactions are managed by the <code>FragmentManager</code> on the Main Thread. Fragment transactions can be asynchronous (e.g. <code>commit()</code>) or synchronous (e.g. <code>commitNow()</code>).</p>
-            <h3>Performance Impact</h3>
-            <p>Retaining views inside inactive fragment instances prevents GC of the entire view hierarchy, leading to substantial memory overhead.</p>
-            <h3>Common Production Issues</h3>
-            <p>Registering lifecycle-aware observers (like Flows or LiveData) using the fragment instance (<code>this</code>) instead of the <code>viewLifecycleOwner</code>. Because the fragment instance survives view destruction, the observers accumulate, causing memory leaks and duplicate triggers.</p>
-            <h3>Interview Questions</h3>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Two Lifecycles</strong>: A Fragment has a fragment instance lifecycle and a fragment view lifecycle. The view can be destroyed and recreated (such as when placed on the backstack) while the fragment instance itself remains in memory.</li>
+                <li><strong>Memory Leak Risk</strong>: Registering observers inside a Fragment using the instance (<code>this</code>) as the owner causes leaks, as the reference is retained even after the view is destroyed. Always use <code>viewLifecycleOwner</code>.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
                     <div class="qa-label question">Why does Fragment have two separate Lifecycles?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Fragment views can be destroyed (e.g., when replaced on the backstack) while the fragment instance remains alive. To prevent memory leaks of the view tree, the view lifecycle is destroyed while the instance lifecycle remains active. Observers must bind to the view's lifecycle (<code>viewLifecycleOwner</code>) to automatically clean up.</div>
+                    <div class="qa-text">Fragment views can be destroyed (e.g. when replaced on the backstack) while the fragment instance remains alive. To prevent memory leaks of the view tree, the view lifecycle is destroyed while the instance lifecycle remains active. Observers must bind to the view's lifecycle (<code>viewLifecycleOwner</code>) to automatically clean up.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How do you manage ViewBinding cleanup inside <code>onDestroyView()</code>?</div>
+                    <div class="qa-text">How do you manage ViewBinding cleanup inside <code>onDestroyView()</code>? (Set the backing property reference to null).</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Holding a non-null reference to view binding in <code>onDestroyView()</code>, which leaks the whole view hierarchy.</div>
+                    <div class="qa-text">Observing LiveData or Flows in <code>onViewCreated</code> using `this` instead of `viewLifecycleOwner`.</div>
                 </div>
             </div>
         </div>
@@ -75,28 +67,24 @@
     <article class="topic-card">
         <h2 id="viewmodel">
             <input type="checkbox" class="topic-chk" data-topic="3">
-            <span>3. ViewModel Internals and Lifecycle</span>
+            <span>3. ViewModel Internals (ViewModelStore retention)</span>
             <span class="topic-tag">Framework</span>
         </h2>
         <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>A <code>ViewModelStore</code> holds ViewModel instances. The store is retained across configuration changes by registering it inside <code>NonConfigurationInstances</code>. When the activity rotates, the system passes this store from the old activity instance to the new activity instance, preserving state.</p>
-            <h3>Threading Model</h3>
-            <p>Instance lookup and initialization occur on the Main Thread. Network or database actions launched from within ViewModels (via <code>viewModelScope</code>) should be offloaded to background dispatchers.</p>
-            <h3>Performance Impact</h3>
-            <p>Reduces UI recreation latency. However, holding strong references to UI elements (like activities, views, or contexts) inside the ViewModel causes severe memory leaks across rotations.</p>
-            <h3>Common Production Issues</h3>
-            <p>Assuming ViewModels survive process death. When the OS terminates the app process, the ViewModel store is destroyed. To survive process death, you must use <code>SavedStateHandle</code>.</p>
-            <h3>Interview Questions</h3>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><code>ViewModelStore</code>: Holds ViewModel instances. Retained across configuration changes by passing it to the new activity instance via the <code>retainNonConfigurationInstances()</code> hook.</li>
+                <li><strong>Process Death</strong>: ViewModels do **not** survive process death. When the process is terminated, the VM store is wiped. Use <code>SavedStateHandle</code> to restore state.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
                     <div class="qa-label question">How does ViewModel survive configuration changes but not process death?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">During rotation, the <code>ViewModelStore</code> is passed to the new Activity instance using <code>retainNonConfigurationInstances()</code>, preserving the same ViewModel in memory. During process death, the VM host process is destroyed, wiping all memory. The system server only preserves a small serialized bundle, which is delivered via <code>SavedStateHandle</code> on recreation.</div>
+                    <div class="qa-text">During configuration changes (like rotation), the activity is recreated, but the system passes the original <code>ViewModelStore</code> to the new Activity instance using <code>retainNonConfigurationInstances()</code>. During process death, the host process is terminated, destroying all memory. The system only retains the saved state bundle, which must be restored using a <code>SavedStateHandle</code>.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does the <code>SavedStateFlow</code> integration in <code>SavedStateHandle</code> update state under the hood?</div>
+                    <div class="qa-text">How does <code>SavedStateHandle</code> communicate changes back to the system server processes?</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Passing Activity Context to a ViewModel constructor instead of Application Context.</div>
+                    <div class="qa-text">Storing references to views, contexts, or activity instances inside a ViewModel, causing leaks when the activity is recreated.</div>
                 </div>
             </div>
         </div>
@@ -104,36 +92,26 @@
 
     <!-- TOPIC 4 -->
     <article class="topic-card">
-        <h2 id="process-lifecycle">
+        <h2 id="looper-handler">
             <input type="checkbox" class="topic-chk" data-topic="4">
-            <span>4. Process Lifecycle (Foreground, Visible, Service, Cached)</span>
-            <span class="topic-tag">System</span>
+            <span>4. Looper, MessageQueue, and Handler thread loop</span>
+            <span class="topic-tag">Threading</span>
         </h2>
         <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>Android manages app processes dynamically. Based on component states, the OS assigns an OOM adjustment score (<code>oom_adj</code>) representing process importance:
+            <h3>Quick Cheat Sheet</h3>
             <ul>
-                <li><strong>Foreground (oom_adj = 0):</strong> Host of the active screen or a foreground service.</li>
-                <li><strong>Visible:</strong> Partially obscured (like a dialog background).</li>
-                <li><strong>Service:</strong> Hosting active background service.</li>
-                <li><strong>Cached:</strong> Retained in background for quick resume. Killed first if memory is low.</li>
-            </ul></p>
-            <h3>Threading Model</h3>
-            <p>Managed by the Low Memory Killer Daemon (lmkd) in kernel space, executing kills asynchronously based on oom_adj thresholds.</p>
-            <h3>Performance Impact</h3>
-            <p>Limits memory footprints dynamically, ensuring background apps do not starve the active user interface.</p>
-            <h3>Common Production Issues</h3>
-            <p>Background tasks that run without raising the process priority get terminated abruptly by the LMK when the user leaves the application.</p>
-            <h3>Interview Questions</h3>
+                <li><strong>Looper</strong>: Runs an infinite loop on a thread (using ThreadLocal storage), reading tasks from its <code>MessageQueue</code>. Uses Linux's <code>epoll</code> to sleep when the queue is empty.</li>
+                <li><strong>Handler</strong>: Interacts with the Looper's message queue to post runnables and messages from background threads safely to the target thread context.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">What is the oom_adj score, and how does the Low Memory Killer use it?</div>
+                    <div class="qa-label question">How does the main thread Looper stay active without consuming 100% CPU when idle?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">The <code>oom_adj</code> is a score from -1000 to 1000 assigned to every running process by the Activity Manager. The lower the score, the more important the process is to the user. When physical RAM is depleted, the Low Memory Killer daemon reads these scores and terminates processes starting with the highest scores (e.g. Cached processes) to reclaim memory pages.</div>
+                    <div class="qa-text">The main thread <code>Looper.loop()</code> is an infinite loop that calls <code>MessageQueue.next()</code>. If no messages are pending, it blocks using native code via the Linux <code>epoll_wait</code> system call, putting the thread to sleep. When a new event or message is posted to the queue, the OS wakes up the thread by writing to the event file descriptor, eliminating busy polling.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does declaring a service as a foreground service change its <code>oom_adj</code> score?</div>
+                    <div class="qa-text">What is an <code>IdleHandler</code> and when should you use it? (A callback executed when the queue has completed its current work and is about to block, useful for low-priority tasks).</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Assuming that background thread operations keep an app safe from being killed when the user puts the app in the background.</div>
+                    <div class="qa-text">Instantiating a Handler inside a background thread without calling <code>Looper.prepare()</code> first, causing runtime crashes.</div>
                 </div>
             </div>
         </div>
@@ -141,217 +119,23 @@
 
     <!-- TOPIC 5 -->
     <article class="topic-card">
-        <h2 id="application-lifecycle">
-            <input type="checkbox" class="topic-chk" data-topic="5">
-            <span>5. Application Lifecycle and Callbacks</span>
-            <span class="topic-tag">Framework</span>
-        </h2>
-        <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>The <code>Application</code> instance is instantiated by the <code>ActivityThread</code> immediately after the process forks from Zygote. It lives as long as the process is alive. It receives system events via callbacks (such as <code>ComponentCallbacks2</code> for memory trim events).</p>
-            <h3>Threading Model</h3>
-            <p>Initialization (<code>onCreate</code>) runs synchronously on the Main Thread. Any blocking initialization here delays the initial cold startup of the application.</p>
-            <h3>Performance Impact</h3>
-            <p>Synchronous SDK initializations inside <code>Application.onCreate()</code> delay the first frame draw, inflating Cold Start time metrics.</p>
-            <h3>Common Production Issues</h3>
-            <p>Leaking contexts by registering global static variables or singletons that keep strong references to individual activity contexts instead of the application context.</p>
-            <h3>Interview Questions</h3>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">How can you monitor Activity lifecycle states globally across your entire app?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">You can register a global callback in your Application class using <code>registerActivityLifecycleCallbacks(Application.ActivityLifecycleCallbacks)</code>. This receives events for every Activity state transition, allowing centralized logging, tracking, or state management.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">Explain how the <code>onTrimMemory()</code> callback helps prevent your process from being killed by the LMK.</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Initializing third-party libraries synchronously in `Application.onCreate` without deferring or offloading them to background threads.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 6 -->
-    <article class="topic-card">
-        <h2 id="app-startup">
-            <input type="checkbox" class="topic-chk" data-topic="6">
-            <span>6. App Startup (Jetpack Startup & Initialization Paths)</span>
-            <span class="topic-tag">Performance</span>
-        </h2>
-        <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>During cold start, traditional libraries initialize themselves automatically using independent <code>ContentProvider</code> classes. Content Providers are initialized before `Application.onCreate`. The Jetpack App Startup library replaces these multiple providers with a single shared provider, executing initializations in a defined dependency tree.</p>
-            <h3>Threading Model</h3>
-            <p>By default, initializers execute on the Main Thread. However, you can configure tasks to run asynchronously on background threads using custom executors.</p>
-            <h3>Performance Impact</h3>
-            <p>Reduces cold startup overhead by avoiding the creation of separate content provider components, which require expensive binder transactions during startup.</p>
-            <h3>Common Production Issues</h3>
-            <p>Libraries initializing synchronously during startup that block the UI thread, causing frames to freeze before the app UI can display.</p>
-            <h3>Interview Questions</h3>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Why are ContentProviders bad for cold start performance, and how does App Startup fix this?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Each ContentProvider declared in the manifest requires process startup and binder mapping, adding several milliseconds of overhead. If you have 5-10 third-party libraries using providers to self-initialize, the cumulative delay is substantial. The App Startup library defines a single ContentProvider, wrapping the initializations in standard classes that can run sequentially or in parallel under a single entry point.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How do baseline profiles coordinate with App Startup classes to precompile code paths?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Assuming that App Startup automatically runs all initializations on a background thread.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 7 -->
-    <article class="topic-card">
-        <h2 id="looper-messagequeue">
-            <input type="checkbox" class="topic-chk" data-topic="7">
-            <span>7. Looper & MessageQueue Internals</span>
-            <span class="topic-tag">Threading</span>
-        </h2>
-        <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>A thread has at most one <code>Looper</code>. Under the hood, it uses <code>ThreadLocal</code> storage. The Looper manages a <code>MessageQueue</code> containing messages and runnables. If the queue is empty, the thread blocks using Linux's <code>epoll</code> mechanism, waiting on a file descriptor until a new message is pushed.</p>
-            <h3>Threading Model</h3>
-            <p>Processes tasks sequentially. Message queue synchronization uses a native lock-free queue that allows background threads to safely post events to the loop.</p>
-            <h3>Performance Impact</h3>
-            <p>Ensures that the Main Thread remains responsive by executing tasks in order without polling. Heavy tasks in the queue cause frame rendering delays.</p>
-            <h3>Common Production Issues</h3>
-            <p>Posting too many high-frequency messages (like tracking scroll pixels) can saturate the message queue, delaying rendering and input events.</p>
-            <h3>Interview Questions</h3>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Explain how epoll keeps the Main Thread alive without consuming CPU resources.</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">The <code>MessageQueue</code> uses native code to invoke <code>epoll_wait</code> on a Linux file descriptor. If there are no messages, the OS puts the thread to sleep, freeing CPU cores. When another thread posts a message, it writes a byte to the file descriptor (via `eventfd`), waking the thread to process the new message. This eliminates active polling.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">What is a Sync Barrier, and how does it prioritize rendering messages inside the queue?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Creating multiple Loopers on the Main Thread (which causes immediate crashes; only one Looper is permitted per thread).</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 8 -->
-    <article class="topic-card">
-        <h2 id="handler">
-            <input type="checkbox" class="topic-chk" data-topic="8">
-            <span>8. Handler & HandlerThread Threading Model</span>
-            <span class="topic-tag">Threading</span>
-        </h2>
-        <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>A <code>Handler</code> is bound to a specific Looper. It acts as an interface to push events into the message queue and process them when they exit. A <code>HandlerThread</code> is a helper thread subclass that automatically sets up a Looper and MessageQueue upon starting, providing a background message loop.</p>
-            <h3>Threading Model</h3>
-            <p>Thread-safe message passing. Background threads can call <code>handler.sendMessage()</code>, safely queuing data onto the handler's target thread context.</p>
-            <h3>Performance Impact</h3>
-            <p>HandlerThreads provide a clean, sequential background queue for tasks like Bluetooth sync or sensor processing, offloading work from the UI thread.</p>
-            <h3>Common Production Issues</h3>
-            <p>Memory leaks caused by non-static Handlers holding implicit references to activities, which keeps the activity from being garbage collected if messages are pending.</p>
-            <h3>Interview Questions</h3>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Why is HandlerThread useful, and how do you prevent Handler leaks?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">A <code>HandlerThread</code> provides a background thread with an active message loop, which is useful for processing sequential background tasks. To prevent leaks, handlers should be declared as static/nested classes and use a <code>WeakReference</code> to reference the host class (like an Activity). Any pending callbacks should also be cleared in `onDestroy()`.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">What happens if you instantiate a Handler without passing a Looper parameter in its constructor?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Instantiating a Handler inside a background thread without calling <code>Looper.prepare()</code> (results in a runtime crash).</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 9 -->
-    <article class="topic-card">
-        <h2 id="art-runtime">
-            <input type="checkbox" class="topic-chk" data-topic="9">
-            <span>9. ART Runtime (Interpreted, JIT, AOT Compilation)</span>
-            <span class="topic-tag">System</span>
-        </h2>
-        <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>The Android Runtime (ART) executes compiled Dex code. It uses a tiered compilation system:
-            <ul>
-                <li><strong>Interpreter:</strong> Runs immediately at startup without compilation overhead.</li>
-                <li><strong>JIT (Just-In-Time):</strong> Profiles code during execution, compiling hot methods to native code in memory.</li>
-                <li><strong>AOT (Ahead-Of-Time):</strong> When the device is idle and charging, the background compiler uses stored JIT profiles to pre-compile hot methods to native code.</li>
-            </ul></p>
-            <h3>Threading Model</h3>
-            <p>JIT profiling and compilation run on low-priority background compiler threads, preventing execution stutter on the main application thread.</p>
-            <h3>Performance Impact</h3>
-            <p>Balances fast app installation times with high runtime execution speeds. AOT-compiled code runs at native speed, reducing CPU usage and startup times.</p>
-            <h3>Common Production Issues</h3>
-            <p>App performance differences on older Android devices where AOT compilation profiles are missing or corrupted, falling back to slow interpreter paths.</p>
-            <h3>Interview Questions</h3>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Explain the benefits of ART compilation profiles.</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">ART compilation profiles store information about which methods are frequently executed (hot code paths) during JIT execution. Instead of compiling the entire app to native code (which takes time and consumes storage), the AOT compiler compiles only these hot methods during idle maintenance cycles, optimizing startup performance without wasting storage.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does ART's bytecode execution differ from Dalvik's register-based execution model?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Assuming that because Java code is compiled to dex, it is AOT compiled on installation for all device configurations.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 10 -->
-    <article class="topic-card">
-        <h2 id="garbage-collection">
-            <input type="checkbox" class="topic-chk" data-topic="10">
-            <span>10. Garbage Collection Generational Mechanics</span>
-            <span class="topic-tag">Memory</span>
-        </h2>
-        <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>ART uses a generational collection scheme. Newly allocated objects are placed in the Young Gen space. If they survive collections, they are moved to the Old Gen space. It uses a Concurrent Copying (CC) collector to move objects during compaction, reducing memory fragmentation.</p>
-            <h3>Threading Model</h3>
-            <p>Garbage collection runs concurrently with application execution. Brief stop-the-world pauses occur when marking roots and finalizing object movements.</p>
-            <h3>Performance Impact</h3>
-            <p>Compaction resolves memory fragmentation, avoiding OutOfMemory errors. However, triggering frequent GCs (GC churn) leads to stop-the-world pauses, resulting in dropped UI frames.</p>
-            <h3>Common Production Issues</h3>
-            <p>Creating temporary objects (like Paint instances or custom strings) inside <code>onDraw()</code> or high-frequency loops. This triggers GC churn and causes UI stutter.</p>
-            <h3>Interview Questions</h3>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">How does Generational GC optimize object reclamation, and what causes GC pauses?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Generational GC assumes most objects die young. Collecting the Young Gen space requires searching fewer objects, making it fast. GC pauses occur when marking root references and when moving objects to defragment memory. If these pauses exceed 16.6ms, they delay frame rendering, causing UI jank.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does the <code>onTrimMemory()</code> callback help the application preemptively release references before the OS triggers memory compaction?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Assuming that calling `System.gc()` forces immediate cleanup without any performance penalty.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 11 -->
-    <article class="topic-card">
         <h2 id="memory-leaks">
-            <input type="checkbox" class="topic-chk" data-topic="11">
-            <span>11. Memory Leaks (Detection, References, Avoidance)</span>
+            <input type="checkbox" class="topic-chk" data-topic="5">
+            <span>5. Memory Leaks (Common patterns and detection via LeakCanary)</span>
             <span class="topic-tag">Memory</span>
         </h2>
         <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>A memory leak occurs when an object is no longer needed by the app, but a reference path to it remains active in the garbage collection root tree. This prevents the GC from reclaiming the object's memory.</p>
-            <h3>Threading Model</h3>
-            <p>Memory analysis tools (like LeakCanary) run in background processes, parsing heap dumps (.hprof files) asynchronously using reference trackers.</p>
-            <h3>Performance Impact</h3>
-            <p>Accumulating leaks reduces available heap memory, triggering frequent GCs and eventually causing process termination due to OutOfMemoryError.</p>
-            <h3>Common Production Issues</h3>
-            <p>Holding strong references to Activities inside singletons, static fields, custom views, or unregistered lifecycle callbacks (like location services).</p>
-            <h3>Interview Questions</h3>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Definition</strong>: Occurs when an object is no longer needed but a reference path to it remains active in the GC root tree, preventing reclamation.</li>
+                <li><strong>Common Patterns</strong>: Static references to Context, anonymous Handler runnables, unregistered receivers or listeners.</li>
+                <li><strong>LeakCanary</strong>: Registers activity lifecycle listeners. When destroyed, it wraps references in a <code>WeakReference</code> with a key. If the reference is not cleared after a GC check, LeakCanary dumps the heap, parses the file, and traces the GC root reference path.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">How do you detect memory leaks, and how does LeakCanary work under the hood?</div>
+                    <div class="qa-label question">Explain the memory reference path that leaks an Activity when using a non-static inner Handler class.</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Memory leaks are detected by analyzing heap references. LeakCanary registers activity/fragment lifecycle listeners. When a component is destroyed, it wraps it in a <code>WeakReference</code> with a key. After a short delay, it forces a GC check. If the reference is not cleared, LeakCanary dumps the heap, parses the file, and traces the GC root reference path to identify the leak.</div>
+                    <div class="qa-text">The GC reference path is: Main Thread -> Looper -> MessageQueue -> Message -> target (Handler) -> outer class (Activity). Because the message in the queue retains a reference to the handler, and the handler retains an implicit reference to the activity, the activity cannot be garbage collected until all messages are processed. Declare the Handler class as static/nested with a <code>WeakReference</code> to fix.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
                     <div class="qa-text">What is the difference between WeakReference, SoftReference, and PhantomReference in Java?</div>
                     <div class="qa-label mistake">Common Mistake</div>
@@ -361,218 +145,143 @@
         </div>
     </article>
 
-    <!-- TOPIC 12 -->
+    <!-- TOPIC 6 -->
     <article class="topic-card">
         <h2 id="binder-ipc">
-            <input type="checkbox" class="topic-chk" data-topic="12">
-            <span>12. Binder IPC & AIDL Architecture</span>
+            <input type="checkbox" class="topic-chk" data-topic="6">
+            <span>6. Binder IPC (1MB transaction limit and one-way calls)</span>
             <span class="topic-tag">System</span>
         </h2>
         <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>Binder is Android's IPC implementation. It uses a kernel driver (<code>/dev/binder</code>). Communication works by memory mapping (<code>mmap</code>) a shared buffer space between process address spaces. AIDL (Android Interface Definition Language) compiles interfaces into stub and proxy classes that serialize (marshal) objects across this boundary.</p>
-            <h3>Threading Model</h3>
-            <p>Binder transactions are synchronous by default. The calling thread blocks until the target process returns. Async transactions (one-way calls) do not block. Target calls execute on a pool of background binder threads in the receiver process.</p>
-            <h3>Performance Impact</h3>
-            <p>Binder is fast because it requires only a single memory copy (from caller's user space to target's kernel-mapped user space). However, transactions have a strict 1MB size limit per process.</p>
-            <h3>Common Production Issues</h3>
-            <p>Passing too much data (like large intent extras or lists) across IPC boundaries, which triggers `TransactionTooLargeException` and crashes the application.</p>
-            <h3>Interview Questions</h3>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Binder IPC</strong>: Maps a shared memory buffer space between the calling and target process address spaces, reducing memory copying.</li>
+                <li><strong>Transaction Limit</strong>: Limited to **1MB** per process, shared across all active transactions. One-way (asynchronous) calls have a smaller limit (usually 64KB).</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">Explain the binder memory copy reduction compared to traditional Linux sockets.</div>
+                    <div class="qa-label question">Explain the transaction limits of Binder IPC.</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Traditional socket communication requires two copies: caller user-space -> kernel space -> receiver user-space. Binder maps a section of physical memory to both kernel space and the receiver process's address space. The caller copies data once from its address space to this kernel-mapped block, and the receiver reads it directly, reducing copy overhead by 50%.</div>
+                    <div class="qa-text">Binder IPC enforces a strict 1MB transaction buffer limit shared across all active transactions in the process. For asynchronous one-way calls, the limit is lower (usually 64KB) to prevent buffer starvation. Passing data that exceeds this limit (such as large images or lists in intents) triggers a <code>TransactionTooLargeException</code>.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does the <code>oneway</code> keyword in AIDL affect thread blocking on the calling side?</div>
+                    <div class="qa-text">What is a Binder Death Recipient, and when should you use it? (A callback registered to receive notification if the target service process terminates unexpectedly).</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Performing synchronous binder IPC calls on the main thread during UI interactions.</div>
+                    <div class="qa-text">Passing heavy serialized objects inside bundle intents across activities or services.</div>
                 </div>
             </div>
         </div>
     </article>
 
-    <!-- TOPIC 13 -->
+    <!-- TOPIC 7 -->
+    <article class="topic-card">
+        <h2 id="art-runtime">
+            <input type="checkbox" class="topic-chk" data-topic="7">
+            <span>7. ART Compilation Tiers & Baseline Profiles</span>
+            <span class="topic-tag">System</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>Compilation Tiers</strong>:
+                    <ul>
+                        <li>Interpreter: Runs immediately at startup without compilation overhead.</li>
+                        <li>JIT (Just-In-Time): Profiles code during run, compiling hot methods to native code in memory.</li>
+                        <li>AOT (Ahead-Of-Time): Pre-compiles hot methods using JIT profiles during idle/charging daemon cycles.</li>
+                    </ul>
+                </li>
+                <li><strong>Baseline Profiles</strong>: Pre-defined JIT profiles shipped inside the APK. ART uses them to pre-compile critical code paths (like startup flows) on installation, bypassing initial interpretation steps.</li>
+            </ul>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">How do Baseline Profiles optimize cold startup time in ART?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Usually, ART interprets code at startup and profiles it using JIT. Compilation to native code occurs only after code paths become "hot". Baseline Profiles contain a pre-compiled profile list of classes and methods (like startup flows). Upon installation, ART uses this profile to AOT-compile these paths immediately, avoiding interpreter overhead on the very first launch.</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">How does ART's concurrent copying garbage collector reduce compaction pauses?</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Assuming that all Java/Kotlin code is compiled to native machine code immediately upon installation on all versions of Android.</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 8 -->
+    <article class="topic-card">
+        <h2 id="background-execution">
+            <input type="checkbox" class="topic-chk" data-topic="8">
+            <span>8. WorkManager vs Services vs Foreground Services</span>
+            <span class="topic-tag">Framework</span>
+        </h2>
+        <div class="topic-body">
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><code>Service</code>: Framework component for background tasks. Runs on the main thread by default. Kept alive relative to the host process priority.</li>
+                <li><code>Foreground Service</code>: Displays a persistent notification. Elevates process priority to Foreground (oom_adj = 0), preventing termination. Android 14 requires declaring specific service types.</li>
+                <li><code>WorkManager</code>: Library for persistent, guaranteed background tasks. Persists tasks in SQLite database, scheduling execution via JobScheduler when constraints are met.</li>
+            </ul>
+            <div class="interview-qa-container">
+                <div class="qa-block">
+                    <div class="qa-label question">When should you use WorkManager instead of a Foreground Service?</div>
+                    <div class="qa-label answer">Answer</div>
+                    <div class="qa-text">Use <code>WorkManager</code> for deferrable, persistent tasks that require execution guarantees (like uploading analytics or syncing database deltas) even if the app restarts. Use a <code>Foreground Service</code> for immediate, user-noticeable tasks that require continuous execution (like navigation navigation or music playback).</div>
+                    <div class="qa-label followup">Senior-Level Follow-up</div>
+                    <div class="qa-text">Under what conditions does starting a foreground service trigger a BackgroundServiceStartNotAllowedException? (When trying to start it from the background without specific system permissions or intent triggers).</div>
+                    <div class="qa-label mistake">Common Mistake</div>
+                    <div class="qa-text">Thinking that starting a standard Service automatically runs it on a background thread. (Services run on the main thread by default).</div>
+                </div>
+            </div>
+        </div>
+    </article>
+
+    <!-- TOPIC 9 -->
     <article class="topic-card">
         <h2 id="pendingintent">
-            <input type="checkbox" class="topic-chk" data-topic="13">
-            <span>13. PendingIntent Security and Flag Mechanics</span>
+            <input type="checkbox" class="topic-chk" data-topic="9">
+            <span>9. PendingIntent Security (FLAG_IMMUTABLE)</span>
             <span class="topic-tag">System</span>
         </h2>
         <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>A <code>PendingIntent</code> is a token that you pass to another application (like the system notification manager or alarm manager), granting it permission to execute a pre-defined intent on your app's behalf with your app's security privileges.</p>
-            <h3>Threading Model</h3>
-            <p>Thread-agnostic. The execution of the intent runs asynchronously in your application's process context once triggered by the system process.</p>
-            <h3>Performance Impact</h3>
-            <p>Uses negligible memory. The target intent definition is stored securely by the system server (<code>ActivityManagerService</code>) as a token.</p>
-            <h3>Common Production Issues</h3>
-            <p>Declaring a PendingIntent as mutable (<code>FLAG_MUTABLE</code>) without defining explicit targets. This allows receiver apps to modify the intent fields, executing arbitrary components inside your application.</p>
-            <h3>Interview Questions</h3>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>PendingIntent</strong>: A token granting external processes (like notification manager) permission to execute an intent on your app's behalf with your app's security privileges.</li>
+                <li><strong>Security</strong>: On API 31+, developers must specify either <code>FLAG_IMMUTABLE</code> (preferred) or <code>FLAG_MUTABLE</code>. Immutable flags prevent the receiving app from modifying the intent parameters.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
-                    <div class="qa-label question">What are PendingIntent flags, and why is FLAG_IMMUTABLE recommended?</div>
+                    <div class="qa-label question">Why did Android 12 make FLAG_IMMUTABLE mandatory for most PendingIntents?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">PendingIntent flags define its lifecycle and mutability. <code>FLAG_IMMUTABLE</code> prevents other applications from modifying the underlying intent. If mutable, a receiver application could mutate the intent's action or target component, exploiting your app's privileges. <code>FLAG_IMMUTABLE</code> is mandatory for security on newer Android versions unless mutability is explicitly required.</div>
+                    <div class="qa-text">To prevent security vulnerability exploits. If a <code>PendingIntent</code> is mutable, a malicious receiving application can mutate the underlying intent's parameters or target component, executing arbitrary actions with your application's privileges. <code>FLAG_IMMUTABLE</code> locks the intent, preventing modifications.</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">Under what circumstances is <code>FLAG_UPDATE_CURRENT</code> required when updating notification actions?</div>
+                    <div class="qa-text">When is <code>FLAG_MUTABLE</code> explicitly required? (When the system needs to append extra information, such as direct reply text from notifications or location updates).</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Failing to specify either mutable or immutable flags on API 31+, which triggers immediate startup crashes.</div>
+                    <div class="qa-text">Failing to declare any mutability flag on API 31+, which triggers immediate runtime crashes.</div>
                 </div>
             </div>
         </div>
     </article>
 
-    <!-- TOPIC 14 -->
+    <!-- TOPIC 10 -->
     <article class="topic-card">
-        <h2 id="notifications">
-            <input type="checkbox" class="topic-chk" data-topic="14">
-            <span>14. Notification Channels and System Service Posting</span>
-            <span class="topic-tag">System</span>
-        </h2>
-        <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>Notifications are managed by the system process <code>NotificationManagerService</code>. Apps post notifications using <code>NotificationManager.notify()</code>. Since Android 8 (API 26), all notifications must be assigned to a <code>NotificationChannel</code>, which defines user-facing sound, vibration, and priority settings.</p>
-            <h3>Threading Model</h3>
-            <p>Posting notifications is synchronous. The request is serialized and sent via binder IPC to the system server process for rendering on the screen.</p>
-            <h3>Performance Impact</h3>
-            <p>Negligible, but updating notifications at a very high frequency (e.g., inside progress loops) saturates the system server's binder queue, slowing down UI rendering.</p>
-            <h3>Common Production Issues</h3>
-            <p>Attempting to post notifications without declaring a valid channel ID. This is ignored by the OS on newer versions, or crashes the app.</p>
-            <h3>Interview Questions</h3>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">Why did Android introduce Notification Channels, and can they be modified by the app after creation?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Notification Channels were introduced to give users granular control over notifications. Once created, the channel settings (such as importance, sound, or vibration) are managed by the system. The application *cannot* modify these settings programmatically. If changes are needed, the app must create a new channel with a different ID.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How do notification action buttons execute background logic without bringing the app to the foreground?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Creating a new NotificationChannel every time you post a notification (they should be registered once during application startup).</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 15 -->
-    <article class="topic-card">
-        <h2 id="workmanager-internals">
-            <input type="checkbox" class="topic-chk" data-topic="15">
-            <span>15. WorkManager Internals & SQLite Persistence</span>
-            <span class="topic-tag">Framework</span>
-        </h2>
-        <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>WorkManager manages persistent background tasks. When work is enqueued, it writes a task description and execution state to an internal SQLite database. It delegates execution scheduling to <code>JobScheduler</code> on API 23+, and uses an internal broadcast receiver scheduler on older APIs.</p>
-            <h3>Threading Model</h3>
-            <p>Runs tasks asynchronously. By default, task execution occurs on a background worker thread. When the task completes, it updates the SQLite state before exiting.</p>
-            <h3>Performance Impact</h3>
-            <p>Guarantees execution even if the process or device restarts. Writing to the SQLite database adds small disk I/O overhead, so it is not suited for high-speed loops.</p>
-            <h3>Common Production Issues</h3>
-            <p>Enqueuing duplicate unique workers without specifying a conflict resolution policy (like `KEEP` or `REPLACE`), resulting in redundant background tasks.</p>
-            <h3>Interview Questions</h3>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">How does WorkManager guarantee task execution even across system restarts?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">WorkManager persists all task requests and execution states in a local SQLite database (using Room). When the device reboots, a startup receiver reads this database and schedules any pending tasks back into the OS-level JobScheduler.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does WorkManager handle task cancellation when constraints (such as network connectivity) are lost during execution?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Using WorkManager for immediate, in-memory operations that must run synchronously (use Coroutines instead).</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 16 -->
-    <article class="topic-card">
-        <h2 id="services-vs-workmanager">
-            <input type="checkbox" class="topic-chk" data-topic="16">
-            <span>16. Services vs WorkManager</span>
-            <span class="topic-tag">Framework</span>
-        </h2>
-        <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>A <code>Service</code> is a framework component representing background execution. Standard services run inside the host application process. <code>WorkManager</code> is a library wrapper that manages background tasks, using services under the hood only when persistent background scheduling is required.</p>
-            <h3>Threading Model</h3>
-            <p>Standard Services run on the Main Thread. WorkManager runs tasks asynchronously on background executor threads.</p>
-            <h3>Performance Impact</h3>
-            <p>Standard Services are lightweight but offer no scheduling optimization. WorkManager manages execution scheduling based on battery constraints, optimizing resource usage.</p>
-            <h3>Common Production Issues</h3>
-            <p>Using background services to execute long-running tasks. Background services are killed by the OS when the app goes to the background. Long-running tasks should use WorkManager or Foreground Services instead.</p>
-            <h3>Interview Questions</h3>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">When should you use a Service instead of WorkManager?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">Use standard Services (like Bound Services) for immediate, non-persistent, local interactions within the app (such as music playback). Use <code>WorkManager</code> for deferrable, persistent tasks that require execution guarantees (like syncing data to a server).</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">How does the memory footprint of a bound service compare to a WorkManager job executor?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Thinking that starting a service automatically spawns a background thread.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 17 -->
-    <article class="topic-card">
-        <h2 id="foreground-services">
-            <input type="checkbox" class="topic-chk" data-topic="17">
-            <span>17. Foreground Services (Android 14 requirements)</span>
-            <span class="topic-tag">System</span>
-        </h2>
-        <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>Foreground Services perform user-noticeable operations. The service must display a persistent notification to the user. Starting in Android 14, apps must declare specific foreground service types (e.g. `dataSync`, `location`) in their manifest, along with type-specific permissions.</p>
-            <h3>Threading Model</h3>
-            <p>Runs on the Main Thread. Any network requests or calculations must be offloaded to background threads manually.</p>
-            <h3>Performance Impact</h3>
-            <p>Elevates the application's process priority to Foreground (oom_adj = 0), preventing the Low Memory Killer from terminating the process.</p>
-            <h3>Common Production Issues</h3>
-            <p>Starting a foreground service from the background on newer Android versions. This is blocked by the OS, triggering a `BackgroundServiceStartNotAllowedException`.</p>
-            <h3>Interview Questions</h3>
-            <div class="interview-qa-container">
-                <div class="qa-block">
-                    <div class="qa-label question">What are the manifest declaration rules for Foreground Services in Android 14?</div>
-                    <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">In Android 14, you must declare the foreground service in the manifest, specify its foreground service type using the <code>android:foregroundServiceType</code> attribute, and request the type-specific permission (e.g., <code>FOREGROUND_SERVICE_DATA_SYNC</code>) in the manifest.</div>
-                    <div class="qa-label followup">Senior-Level Follow-up</div>
-                    <div class="qa-text">Under what conditions can you bypass the background service start restriction?</div>
-                    <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Failing to call <code>startForeground()</code> within 10 seconds of starting a foreground service, causing the OS to crash the application.</div>
-                </div>
-            </div>
-        </div>
-    </article>
-
-    <!-- TOPIC 18 -->
-    <article class="topic-card">
-        <h2 id="anr-causes">
-            <input type="checkbox" class="topic-chk" data-topic="18">
-            <span>18. ANR (Application Not Responding) Causes and Profiling</span>
+        <h2 id="anr">
+            <input type="checkbox" class="topic-chk" data-topic="10">
+            <span>10. ANR (Application Not Responding) profiling</span>
             <span class="topic-tag">Performance</span>
         </h2>
         <div class="topic-body">
-            <h3>What happens internally</h3>
-            <p>An ANR is triggered when the Main Thread Looper takes too long to process an event. The system displays an ANR dialog after 5 seconds of input timeout or 200 seconds of broadcast receiver timeout. When triggered, the OS dumps the thread stacks of all active processes to a `traces.txt` file.</p>
-            <h3>Threading Model</h3>
-            <p>Triggered when background threads block the Main Thread (e.g. through locks or synchronized blocks) or when the Main Thread itself performs blocking I/O.</p>
-            <h3>Performance Impact</h3>
-            <p>Stops all user interactions immediately, degrading user experience and app ratings.</p>
-            <h3>Common Production Issues</h3>
-            <p>Executing database operations synchronously, parsing large payloads on the main thread, or deadlocks between the main thread and background threads.</p>
-            <h3>Interview Questions</h3>
+            <h3>Quick Cheat Sheet</h3>
+            <ul>
+                <li><strong>ANR Trigger</strong>: Occurs when the main thread is blocked for longer than 5 seconds (input timeout) or 200 seconds (broadcast receiver). The OS generates a thread dump file (`traces.txt`).</li>
+                <li><strong>Common Causes</strong>: Main thread performing disk I/O, network requests, locks on background threads, or long-running computations.</li>
+            </ul>
             <div class="interview-qa-container">
                 <div class="qa-block">
                     <div class="qa-label question">How do you debug an ANR using the traces.txt file?</div>
                     <div class="qa-label answer">Answer</div>
-                    <div class="qa-text">When an ANR occurs, the system writes the stack traces of all threads to <code>/data/anr/traces.txt</code>. You open this file, locate your application process, find the "main" thread, and examine its call stack to identify the blocking method (such as database read or thread synchronization lock).</div>
+                    <div class="qa-text">When an ANR occurs, the system writes the stack traces of all active threads to <code>/data/anr/traces.txt</code>. To debug, locate your application process in this file, find the "main" thread, and examine its call stack to identify what blocked execution (like database queries or synchronization lock waiting).</div>
                     <div class="qa-label followup">Senior-Level Follow-up</div>
                     <div class="qa-text">How does StrictMode help catch ANR bottlenecks during development?</div>
                     <div class="qa-label mistake">Common Mistake</div>
-                    <div class="qa-text">Assuming that ANRs are only caused by infinite loops, ignoring blocks caused by database queries or network tasks.</div>
+                    <div class="qa-text">Assuming that ANRs are only caused by infinite loops, ignoring blocks caused by synchronized database writes.</div>
                 </div>
             </div>
         </div>
